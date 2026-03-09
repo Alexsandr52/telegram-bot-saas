@@ -1,0 +1,114 @@
+# ============================================
+# Telegram Bot SaaS - Docker Compose
+# Local Development Environment
+# ============================================
+
+version: '3.9'
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  database:
+    image: postgres:15-alpine
+    container_name: bot_saas_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-bot_saas}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/init:/docker-entrypoint-initdb.d/scripts
+    networks:
+      - bot_saas_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-bot_saas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================
+  # Redis (Cache & Queue)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: bot_saas_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bot_saas_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # pgAdmin (Database Management UI)
+  # ============================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: bot_saas_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@botsaas.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - bot_saas_network
+    depends_on:
+      - database
+
+  # ============================================
+  # Redis Commander (Redis Management UI)
+  # ============================================
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: bot_saas_redis_commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379:0:${REDIS_PASSWORD:-redis123}
+    ports:
+      - "${REDIS_COMMANDER_PORT:-8082}:8081"
+    networks:
+      - bot_saas_network
+    depends_on:
+      - redis
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  bot_saas_network:
+    name: bot_saas_network
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres_data:
+    name: bot_saas_postgres_data
+    driver: local
+
+  redis_data:
+    name: bot_saas_redis_data
+    driver: local
+
+  pgadmin_data:
+    name: bot_saas_pgadmin_data
+    driver: local

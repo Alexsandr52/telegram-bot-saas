@@ -89,6 +89,46 @@ services:
     depends_on:
       - redis
 
+  # ============================================
+  # Platform Bot (Main bot for masters)
+  # ============================================
+  platform-bot:
+    build:
+      context: ./platform-bot
+      dockerfile: Dockerfile
+    container_name: bot_saas_platform_bot
+    restart: unless-stopped
+    environment:
+      # Bot Configuration
+      BOT_TOKEN: ${PLATFORM_BOT_TOKEN}
+      BOT_WEBHOOK_MODE: "false"
+      BOT_WEBHOOK_SECRET: ${PLATFORM_BOT_WEBHOOK_SECRET}
+
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@database:5432/${POSTGRES_DB:-bot_saas}
+
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379/0
+      REDIS_ENABLED: ${REDIS_ENABLED:-true}
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+
+      # Factory Service
+      FACTORY_SERVICE_URL: http://factory-service:8002
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+    networks:
+      - bot_saas_network
+    depends_on:
+      - database
+      - redis
+    volumes:
+      - ./platform-bot/src:/app/src
+
 # ============================================
 # Networks
 # ============================================

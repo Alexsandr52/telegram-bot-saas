@@ -4,6 +4,7 @@ Loads bot settings, services, schedule, and custom commands from database
 """
 import os
 import asyncio
+import json
 from typing import Optional, List, Dict, Any
 from datetime import time
 from pydantic import BaseModel, Field
@@ -164,6 +165,23 @@ class ConfigManager:
             for row in schedule_data
         ]
 
+        # Parse settings JSON
+        settings_dict = {}
+        if bot_data['settings']:
+            if isinstance(bot_data['settings'], str):
+                settings_dict = json.loads(bot_data['settings'])
+            else:
+                settings_dict = bot_data['settings']
+
+        # Extract custom commands from settings
+        custom_commands = []
+        if 'custom_commands' in settings_dict:
+            custom_commands = [
+                CustomCommand(**cmd)
+                for cmd in settings_dict.get('custom_commands', [])
+                if cmd.get('enabled', True)
+            ]
+
         # Create config
         self._config = BotConfig(
             bot_id=str(bot_data['id']),
@@ -178,7 +196,8 @@ class ConfigManager:
             language=bot_data['language'] or 'ru',
             services=services,
             schedule=schedule,
-            settings=bot_data['settings'] or {}
+            custom_commands=custom_commands,
+            settings=settings_dict
         )
 
         logger.info(f"Config loaded for bot {self.bot_id}: {len(services)} services, {len(schedule)} schedule days")

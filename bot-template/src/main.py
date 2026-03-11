@@ -11,6 +11,10 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -27,7 +31,7 @@ from src.handlers import client_menu, services, booking, profile
 # Get environment variables
 BOT_ID = os.getenv("BOT_ID")  # Bot UUID from database
 BOT_TOKEN = os.getenv("BOT_TOKEN")  # Bot token (decrypted)
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@database:5432/bot_saas")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@database:5432/bot_saas")
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable is required")

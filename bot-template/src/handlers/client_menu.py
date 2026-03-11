@@ -76,10 +76,13 @@ async def show_help(event: Message | CallbackQuery) -> None:
     about_cmd = "about"
 
     for cmd in config.custom_commands:
-        if cmd['handler_type'] == 'catalog':
-            catalog_cmd = cmd['command']
-        elif cmd['handler_type'] == 'about':
-            about_cmd = cmd['command']
+        handler_type = getattr(cmd, 'handler_type', '')
+        command = getattr(cmd, 'command', '')
+
+        if handler_type == 'catalog':
+            catalog_cmd = command
+        elif handler_type == 'about':
+            about_cmd = command
 
     help_text = (
         f"📚 *Справка*\n\n"
@@ -115,7 +118,8 @@ async def handle_custom_command(callback: CallbackQuery) -> None:
     # Find command config
     cmd_config = None
     for cmd in config.custom_commands:
-        if cmd['command'] == command:
+        cmd_command = getattr(cmd, 'command', '')
+        if cmd_command == command:
             cmd_config = cmd
             break
 
@@ -123,7 +127,7 @@ async def handle_custom_command(callback: CallbackQuery) -> None:
         await callback.answer("❌ Команда не найдена", show_alert=True)
         return
 
-    handler_type = cmd_config['handler_type']
+    handler_type = getattr(cmd_config, 'handler_type', '')
 
     # Route to appropriate handler
     if handler_type == 'catalog':

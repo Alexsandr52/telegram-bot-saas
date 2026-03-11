@@ -292,33 +292,115 @@ class BotDatabase:
         self,
         client_id: str,
         status: Optional[str] = None,
-        limit: int = 10
+        upcoming_only: bool = False,
+        limit: int = 10,
+        offset: int = 0
     ) -> List[dict]:
-        """Get client appointments"""
-        if status:
-            query = """
-                SELECT a.id, a.start_time, a.end_time, a.status,
-                       s.name as service_name, s.price
-                FROM appointments a
-                JOIN services s ON s.id = a.service_id
-                WHERE a.client_id = $1 AND a.status = $2
-                ORDER BY a.start_time DESC
-                LIMIT $3
-            """
-            rows = await self.fetch(query, client_id, status, limit)
-        else:
-            query = """
-                SELECT a.id, a.start_time, a.end_time, a.status,
-                       s.name as service_name, s.price
-                FROM appointments a
-                JOIN services s ON s.id = a.service_id
-                WHERE a.client_id = $1
-                ORDER BY a.start_time DESC
-                LIMIT $2
-            """
-            rows = await self.fetch(query, client_id, limit)
+        """
+        Get client appointments with filtering options
 
+        Args:
+            client_id: Client UUID
+            status: Filter by status (pending/confirmed/completed/cancelled)
+            upcoming_only: Only show future appointments
+            limit: Max number of appointments
+            offset: Pagination offset
+
+        Returns:
+            List of appointment dicts
+        """
+        conditions = ["a.client_id = $1"]
+        params = [client_id]
+        param_count = 1
+
+        if status:
+            param_count += 1
+            conditions.append(f"a.status = ${param_count}")
+            params.append(status)
+
+        if upcoming_only:
+            param_count += 1
+            conditions.append(f"a.start_time > NOW()")
+
+        where_clause = " AND ".join(conditions)
+
+        query = f"""
+            SELECT a.id, a.start_time, a.end_time, a.status,
+                   s.name as service_name, s.price, s.duration_minutes
+            FROM appointments a
+            JOIN services s ON s.id = a.service_id
+            WHERE {where_clause}
+            ORDER BY a.start_time ASC
+            LIMIT ${param_count + 1} OFFSET ${param_count + 2}
+        """
+        params.extend([limit, offset])
+
+        rows = await self.fetch(query, *params)
         return [dict(row) for row in rows]
+
+    async def get_upcoming_appointments(
+        self,
+        client_id: str,
+        limit: int = 5
+    ) -> List[dict]:
+        """Get upcoming appointments for a client"""
+        return await self.get_client_appointments(
+            client_id=client_id,
+            upcoming_only=True,
+            limit=limit
+        )
+
+    async def get_past_appointments(
+        self,
+        client_id: str,
+        limit: int = 10,
+        offset: int = 0
+    ) -> List[dict]:
+        """Get past appointments for a client"""
+        rows = await self.fetch(
+            """
+            SELECT a.id, a.start_time, a.end_time, a.status,
+                   s.name as service_name, s.price, s.duration_minutes
+            FROM appointments a
+            JOIN services s ON s.id = a.service_id
+            WHERE a.client_id = $1 AND a.start_time < NOW()
+            ORDER BY a.start_time DESC
+            LIMIT $2 OFFSET $3
+            """,
+            client_id, limit, offset
+        )
+        return [dict(row) for row in rows]
+
+    async def cancel_appointment(
+        self,
+        appointment_id: str,
+        client_id: str
+    ) -> bool:
+        """
+        Cancel an appointment
+
+        Args:
+            appointment_id: Appointment UUID
+            client_id: Client UUID (for verification)
+
+        Returns:
+            True if cancelled successfully
+        """
+        result = await self.execute(
+            """
+            UPDATE appointments
+            SET status = 'cancelled',
+                updated_at = NOW()
+            WHERE id = $1
+              AND client_id = $2
+              AND start_time > NOW()
+              AND status IN ('pending', 'confirmed')
+            """,
+            appointment_id, client_id
+        )
+
+        # Check if row was updated
+        return "UPDATE 1" in result or "UPDATE 0" not in result
 
     # ============================================
     # Services

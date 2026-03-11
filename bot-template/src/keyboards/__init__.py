@@ -26,8 +26,15 @@ def get_main_menu_keyboard(custom_commands: List[dict] = None) -> InlineKeyboard
     # Add custom commands (catalog, about, etc.)
     if custom_commands:
         for cmd in custom_commands:
-            if not cmd.get('enabled', True):
+            # Handle both Pydantic models and dicts
+            enabled = getattr(cmd, 'enabled', True) if hasattr(cmd, 'enabled') else cmd.get('enabled', True)
+            if not enabled:
                 continue
+
+            # Get attributes (works for both Pydantic models and dicts)
+            command = getattr(cmd, 'command', None) if hasattr(cmd, 'command') else cmd.get('command')
+            description = getattr(cmd, 'description', '') if hasattr(cmd, 'description') else cmd.get('description', '')
+            handler_type = getattr(cmd, 'handler_type', '') if hasattr(cmd, 'handler_type') else cmd.get('handler_type', '')
 
             # Map handler types to icons
             icons = {
@@ -35,12 +42,12 @@ def get_main_menu_keyboard(custom_commands: List[dict] = None) -> InlineKeyboard
                 'about': 'ℹ️',
                 'custom': '🔧'
             }
-            icon = icons.get(cmd['handler_type'], '📌')
+            icon = icons.get(handler_type, '📌')
 
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"{icon} {cmd['description']}",
-                    callback_data=f"cmd_{cmd['command']}"
+                    text=f"{icon} {description}",
+                    callback_data=f"cmd_{command}"
                 )
             ])
 
@@ -256,10 +263,128 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
     """Generate keyboard for user profile"""
     buttons = [
         [
-            InlineKeyboardButton(text="📋 Мои записи", callback_data="my_appointments")
+            InlineKeyboardButton(text="📋 Мои записи", callback_data="my_appointments"),
+            InlineKeyboardButton(text="📱 Изменить телефон", callback_data="edit_phone")
         ],
         [
             InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
+        ]
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_appointments_keyboard() -> InlineKeyboardMarkup:
+    """Generate keyboard for appointments list"""
+    buttons = [
+        [
+            InlineKeyboardButton(text="📅 Предстоящие", callback_data="appointments_upcoming"),
+            InlineKeyboardButton(text="📜 История", callback_data="appointments_past")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="profile")
+        ]
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_appointment_detail_keyboard(appointment_id: str, can_cancel: bool = True) -> InlineKeyboardMarkup:
+    """
+    Generate keyboard for appointment details
+
+    Args:
+        appointment_id: Appointment UUID
+        can_cancel: Whether appointment can be cancelled
+    """
+    buttons = []
+
+    if can_cancel:
+        buttons.append([
+            InlineKeyboardButton(text="❌ Отменить запись", callback_data=f"cancel_appointment_{appointment_id}")
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(text="🔙 Назад к списку", callback_data="my_appointments")
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_appointments_list_keyboard(
+    appointments: List[dict],
+    current_page: int = 0,
+    has_more: bool = False,
+    list_type: str = "upcoming"
+) -> InlineKeyboardMarkup:
+    """
+    Generate keyboard with appointments list and pagination
+
+    Args:
+        appointments: List of appointment dicts
+        current_page: Current page number
+        has_more: Whether there are more pages
+        list_type: Type of list (upcoming/past)
+    """
+    buttons = []
+
+    # Add appointments as buttons
+    for appt in appointments:
+        from datetime import datetime
+        day_names = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+
+        appt_date = appt['start_time']
+        date_str = f"{appt_date.strftime('%d.%m')} ({day_names[appt_date.weekday()]})"
+        time_str = appt_date.strftime('%H:%M')
+
+        status_emoji = {
+            'pending': '⏳',
+            'confirmed': '✅',
+            'completed': '✅',
+            'cancelled': '❌'
+        }.get(appt['status'], '❓')
+
+        button_text = f"{status_emoji} {date_str} {time_str} - {appt['service_name']}"
+        buttons.append([
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"appointment_{appt['id']}"
+            )
+        ])
+
+    # Add pagination buttons
+    nav_buttons = []
+    if current_page > 0:
+        nav_buttons.append(
+            InlineKeyboardButton(text="⬅️ Назад", callback_data=f"appointments_{list_type}_{current_page - 1}")
+        )
+
+    nav_buttons.append(
+        InlineKeyboardButton(text=f"📄 Стр. {current_page + 1}", callback_data="noop")
+    )
+
+    if has_more:
+        nav_buttons.append(
+            InlineKeyboardButton(text="➡️ Далее", callback_data=f"appointments_{list_type}_{current_page + 1}")
+        )
+
+    if nav_buttons:
+        buttons.append(nav_buttons)
+
+    # Add back button
+    buttons.append([
+        InlineKeyboardButton(text="🔙 Назад", callback_data="profile")
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_cancel_confirmation_keyboard(appointment_id: str) -> InlineKeyboardMarkup:
+    """Generate keyboard for cancel confirmation"""
+    buttons = [
+        [
+            InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"confirm_cancel_{appointment_id}"),
+            InlineKeyboardButton(text="❌ Нет, оставить", callback_data=f"appointment_{appointment_id}")
         ]
     ]
 

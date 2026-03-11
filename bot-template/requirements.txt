@@ -1,0 +1,28 @@
+# ============================================
+# Bot Template - Dependencies
+# ============================================
+
+# Telegram Bot Framework
+aiogram==3.4.1
+
+# Database
+asyncpg==0.29.0
+
+# Data Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Date/Time
+python-dateutil==2.8.2
+pytz==2024.1
+
+# Utils
+python-dotenv==1.0.0
+orjson==3.9.12
+
+# Logging
+loguru==0.7.2
+
+# HTTP (for loading config from API)
+httpx==0.26.0
+aiohttp==3.9.1

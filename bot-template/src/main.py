@@ -19,9 +19,9 @@ load_dotenv()
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.utils.config import ConfigManager, set_config_manager
-from src.utils.db import BotDatabase, set_database
-from src.handlers import client_menu, services, booking, profile
+from utils.config import ConfigManager, set_config_manager
+from utils.db import BotDatabase, set_database
+from handlers import client_menu, services, booking, profile
 
 
 # ============================================
@@ -131,13 +131,13 @@ async def main() -> None:
 
 def get_config_manager():
     """Get global config manager"""
-    from src.utils.config import get_config_manager as get_cfg
+    from utils.config import get_config_manager as get_cfg
     return get_cfg()
 
 
 def get_database():
     """Get global database"""
-    from src.utils.db import get_database as get_db
+    from utils.db import get_database as get_db
     return get_db()
 
 

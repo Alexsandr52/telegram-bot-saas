@@ -9,7 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from loguru import logger
 from datetime import datetime
 
-from src.keyboards import (
+from keyboards import (
     get_profile_keyboard,
     get_appointments_keyboard,
     get_appointments_list_keyboard,
@@ -17,8 +17,8 @@ from src.keyboards import (
     get_cancel_confirmation_keyboard,
     get_main_menu_keyboard
 )
-from src.utils.config import get_config_manager
-from src.utils.db import get_database
+from utils.config import get_config_manager
+from utils.db import get_database
 
 
 router = Router(name="profile")

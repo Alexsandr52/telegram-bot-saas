@@ -287,3 +287,145 @@ def create_back_button(callback_data: str = "main_menu") -> InlineKeyboardMarkup
             [InlineKeyboardButton(text="🔙 Назад", callback_data=callback_data)]
         ]
     )
+
+
+# ============================================
+# Services Management
+# ============================================
+
+def get_services_list_keyboard(bot_id: str, services: list = None) -> InlineKeyboardMarkup:
+    """
+    Keyboard for services list
+
+    Args:
+        bot_id: Bot UUID
+        services: List of service dictionaries
+    """
+    buttons = []
+
+    if services:
+        # Add service buttons
+        for service in services:
+            service_id = str(service['id'])
+            name = service['name']
+            status = "✅" if service['is_active'] else "❌"
+
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"{status} {name}",
+                    callback_data=f"edit_service:{service_id}"
+                )
+            ])
+
+    # Add action buttons
+    buttons.extend([
+        [
+            InlineKeyboardButton(
+                text="➕ Добавить услугу",
+                callback_data=f"add_service:{bot_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад к боту",
+                callback_data=f"bot_menu:{bot_id}"
+            )
+        ],
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_service_management_keyboard(service_id: str) -> InlineKeyboardMarkup:
+    """
+    Keyboard for service management (edit/delete)
+
+    Args:
+        service_id: Service UUID
+    """
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="🔄 Сменить статус",
+                callback_data=f"service_toggle_active:{service_id}"
+            ),
+            InlineKeyboardButton(
+                text="✏️ Изменить",
+                callback_data=f"service_edit_fields:{service_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="❌ Удалить",
+                callback_data=f"delete_service:{service_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data="back_to_services"
+            )
+        ],
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+# ============================================
+# Schedule Management
+# ============================================
+
+def get_schedule_menu_keyboard() -> InlineKeyboardMarkup:
+    """Schedule management menu keyboard"""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="📊 Просмотр",
+                callback_data="view_schedule"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🕐 Рабочие часы",
+                callback_data="set_working_hours"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🚫 Выходные/исключения",
+                callback_data="add_exception"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data="main_menu"
+            )
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_days_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard for selecting day of week"""
+    buttons = [
+        [
+            InlineKeyboardButton(text="Понедельник", callback_data="set_day:1"),
+            InlineKeyboardButton(text="Вторник", callback_data="set_day:2")
+        ],
+        [
+            InlineKeyboardButton(text="Среда", callback_data="set_day:3"),
+            InlineKeyboardButton(text="Четверг", callback_data="set_day:4")
+        ],
+        [
+            InlineKeyboardButton(text="Пятница", callback_data="set_day:5"),
+            InlineKeyboardButton(text="Суббота", callback_data="set_day:6")
+        ],
+        [
+            InlineKeyboardButton(text="Воскресенье", callback_data="set_day:7")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="manage_schedule")
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

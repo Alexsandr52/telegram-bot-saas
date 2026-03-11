@@ -4,24 +4,38 @@ Initialized on application startup
 """
 from typing import Optional
 
-from .db import MasterRepository, BotRepository, SubscriptionRepository, Database
+from .db import (
+    MasterRepository,
+    BotRepository,
+    SubscriptionRepository,
+    ServiceRepository,
+    AppointmentRepository,
+    ScheduleRepository,
+    Database
+)
 
 
 # Global instances
 _master_repo: Optional[MasterRepository] = None
 _bot_repo: Optional[BotRepository] = None
 _subscription_repo: Optional[SubscriptionRepository] = None
+_service_repo: Optional[ServiceRepository] = None
+_appointment_repo: Optional[AppointmentRepository] = None
+_schedule_repo: Optional[ScheduleRepository] = None
 _db: Optional[Database] = None
 
 
 def init_repositories(db: Database) -> None:
     """Initialize repository instances"""
-    global _master_repo, _bot_repo, _subscription_repo, _db
+    global _master_repo, _bot_repo, _subscription_repo, _service_repo, _appointment_repo, _schedule_repo, _db
 
     _db = db
     _master_repo = MasterRepository(db)
     _bot_repo = BotRepository(db)
     _subscription_repo = SubscriptionRepository(db)
+    _service_repo = ServiceRepository(db)
+    _appointment_repo = AppointmentRepository(db)
+    _schedule_repo = ScheduleRepository(db)
 
 
 def get_master_repo() -> MasterRepository:
@@ -43,6 +57,27 @@ def get_subscription_repo() -> SubscriptionRepository:
     if _subscription_repo is None:
         raise RuntimeError("Subscription repository not initialized. Call init_repositories first.")
     return _subscription_repo
+
+
+def get_service_repo() -> ServiceRepository:
+    """Get service repository instance"""
+    if _service_repo is None:
+        raise RuntimeError("Service repository not initialized. Call init_repositories first.")
+    return _service_repo
+
+
+def get_appointment_repo() -> AppointmentRepository:
+    """Get appointment repository instance"""
+    if _appointment_repo is None:
+        raise RuntimeError("Appointment repository not initialized. Call init_repositories first.")
+    return _appointment_repo
+
+
+def get_schedule_repo() -> ScheduleRepository:
+    """Get schedule repository instance"""
+    if _schedule_repo is None:
+        raise RuntimeError("Schedule repository not initialized. Call init_repositories first.")
+    return _schedule_repo
 
 
 def get_db() -> Database:

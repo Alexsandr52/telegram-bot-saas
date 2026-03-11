@@ -246,8 +246,7 @@ class BotDatabase:
         service_id: str,
         start_time: datetime,
         end_time: datetime,
-        price: Decimal,
-        comment: Optional[str] = None
+        price: Decimal
     ) -> str:
         """
         Create a new appointment
@@ -258,13 +257,11 @@ class BotDatabase:
         appointment_id = await self.fetchval(
             """
             INSERT INTO appointments
-            (bot_id, client_id, service_id, start_time, end_time,
-             price, status, comment)
-            VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+            (bot_id, client_id, service_id, start_time, end_time, price, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'pending')
             RETURNING id
             """,
-            self.bot_id, client_id, service_id, start_time, end_time,
-            price, comment
+            self.bot_id, client_id, service_id, start_time, end_time, price
         )
 
         logger.info(f"Appointment created: {appointment_id} for client {client_id}")
@@ -319,8 +316,7 @@ class BotDatabase:
             params.append(status)
 
         if upcoming_only:
-            param_count += 1
-            conditions.append(f"a.start_time > NOW()")
+            conditions.append("a.start_time > NOW()")
 
         where_clause = " AND ".join(conditions)
 

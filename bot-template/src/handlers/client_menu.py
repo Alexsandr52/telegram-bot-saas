@@ -7,12 +7,12 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart, Command
 from loguru import logger
 
-from src.keyboards import (
+from keyboards import (
     get_main_menu_keyboard,
     get_help_keyboard,
     get_services_keyboard
 )
-from src.utils.config import get_config_manager
+from utils.config import get_config_manager
 
 
 router = Router(name="client_menu")

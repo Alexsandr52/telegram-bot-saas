@@ -1,6 +1,6 @@
 """
 Platform Bot - Main Entry Point
-Simplified version for testing
+Bot for masters to manage their booking bots
 """
 import asyncio
 import sys
@@ -9,19 +9,24 @@ from loguru import logger
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart, Command
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.utils.config import get_settings
+from src.utils.db import Database
+from src.utils.repositories import init_repositories
+
+# Import routers
+from src.handlers import start, connect_bot, services, appointments, schedule
+
 
 # ============================================
 # Configuration
 # ============================================
 
-from src.utils.config import get_settings
 settings = get_settings()
 
 # Configure logger
@@ -34,28 +39,15 @@ logger.add(
 
 
 # ============================================
-# Handlers
+# Database
 # ============================================
 
-async def cmd_start(message: Message) -> None:
-    """Simple /start handler"""
-    await message.answer(
-        "👋 *Добро пожаловать в Bot SaaS Platform!*\n\n"
-        "Бот работает! 🎉\n\n"
-        "Функционал в разработке...",
-        parse_mode="Markdown"
-    )
-    logger.info(f"User {message.from_user.id} sent /start")
-
-
-async def cmd_help(message: Message) -> None:
-    """Help command"""
-    await message.answer(
-        "📚 *Справка*\n\n"
-        "/start - Главное меню\n"
-        "/help - Эта справка",
-        parse_mode="Markdown"
-    )
+async def init_db():
+    """Initialize database connection"""
+    db = Database(settings.DATABASE_URL)
+    await db.connect()
+    init_repositories(db)
+    logger.info("Database initialized")
 
 
 # ============================================
@@ -64,6 +56,9 @@ async def cmd_help(message: Message) -> None:
 
 async def main() -> None:
     """Main function to run the bot"""
+
+    # Initialize database
+    await init_db()
 
     # Create bot
     bot = Bot(
@@ -77,21 +72,31 @@ async def main() -> None:
     # Create dispatcher
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Register handlers
-    dp.message.register(cmd_start, CommandStart())
-    dp.message.register(cmd_help, Command("help"))
+    # Register routers
+    dp.include_router(start.router)
+    dp.include_router(connect_bot.router)
+    dp.include_router(services.router)
+    dp.include_router(appointments.router)
+    dp.include_router(schedule.router)
 
     # Get bot info
     try:
         bot_info = await bot.get_me()
-        logger.info(f"Bot started: @{bot_info.username} (ID: {bot_info.id})")
+        logger.info(f"Platform Bot started: @{bot_info.username} (ID: {bot_info.id})")
     except Exception as e:
         logger.error(f"Failed to get bot info: {e}")
         return
 
     # Start polling
     logger.info("Starting polling mode...")
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        # Cleanup
+        from src.utils.repositories import get_db
+        db = get_db()
+        if db:
+            await db.close()
 
 
 if __name__ == "__main__":

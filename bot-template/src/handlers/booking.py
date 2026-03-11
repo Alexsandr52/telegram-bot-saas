@@ -7,10 +7,10 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 
-from src.keyboards import get_confirmation_keyboard, get_main_menu_keyboard
-from src.utils.config import get_config_manager
-from src.utils.db import get_database
-from src.handlers.services import BookingStates
+from keyboards import get_confirmation_keyboard, get_main_menu_keyboard
+from utils.config import get_config_manager
+from utils.db import get_database
+from handlers.services import BookingStates
 
 
 router = Router(name="booking")

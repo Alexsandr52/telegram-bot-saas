@@ -50,12 +50,13 @@ BOTFather_LINK = "https://t.me/BotFather"
 
 @router.callback_query(F.data == "add_bot")
 @router.callback_query(F.data == "my_bots")
-async def show_my_bots(
-    callback: CallbackQuery,
-    master_repo: MasterRepository,
-    bot_repo: BotRepository
-) -> None:
+async def show_my_bots(callback: CallbackQuery) -> None:
     """Show user's bots or prompt to add new bot"""
+    from src.utils.repositories import get_master_repo, get_bot_repo
+
+    master_repo = get_master_repo()
+    bot_repo = get_bot_repo()
+
     telegram_id = callback.from_user.id
 
     try:
@@ -133,22 +134,24 @@ async def start_add_bot(callback: CallbackQuery, state: FSMContext) -> None:
 @router.message(ConnectBotStates.waiting_for_token)
 async def process_bot_token(
     message: Message,
-    state: FSMContext,
-    master_repo: MasterRepository,
-    bot_repo: BotRepository,
-    subscription_repo: SubscriptionRepository
+    state: FSMContext
 ) -> None:
     """Process bot token from user"""
+    from src.utils.repositories import get_master_repo, get_bot_repo, get_subscription_repo
+
+    master_repo = get_master_repo()
+    bot_repo = get_bot_repo()
+    subscription_repo = get_subscription_repo()
+
     token = message.text.strip()
 
     # Validate token format
     if not re.match(BOT_TOKEN_PATTERN, token):
         await message.answer(
-            "❌ *Неверный формат токена*\n\n"
-            f"Токен должен выглядеть так:\n"
-            "`123456789:ABCdefGHIjklMNOpqrsTUVwxyz`\n\n"
-            f"Получите токен у [@BotFather]({BOTFather_LINK})",
-            parse_mode="Markdown"
+            "❌ Неверный формат токена\n\n"
+            "Токен должен выглядеть так:\n"
+            "123456789:ABCdefGHIjklMNOpqrsTUVwxyz\n\n"
+            f"Получите токен у @BotFather"
         )
         return
 
@@ -163,10 +166,9 @@ async def process_bot_token(
     can_create = await subscription_repo.can_create_bot(master['id'])
     if not can_create:
         await message.answer(
-            "❌ *Достигнут лимит ботов*\n\n"
+            "❌ Достигнут лимит ботов\n\n"
             "Ваш тариф позволяет создать только 1 бота.\n"
             "Для большего количества ботов оформите подписку Pro или Business.",
-            parse_mode="Markdown",
             reply_markup=get_main_menu_keyboard()
         )
         await state.clear()
@@ -178,10 +180,9 @@ async def process_bot_token(
 
         if not bot_info:
             await message.answer(
-                "❌ *Недействительный токен*\n\n"
+                "❌ Недействительный токен\n\n"
                 "Токен не прошёл проверку. Проверьте правильность токена "
-                f"у [@BotFather]({BOTFather_LINK}) и попробуйте снова.",
-                parse_mode="Markdown"
+                "у @BotFather и попробуйте снова."
             )
             return
 
@@ -205,12 +206,11 @@ async def process_bot_token(
         # Ask for bot name
         await message.answer(
             f"✅ Токен принят!\n\n"
-            f"🤖 *Бот:* @{bot_info['username']}\n"
-            f"📝 *Имя:* {bot_info.get('first_name', 'Нет')}\n\n"
+            f"🤖 Бот: @{bot_info['username']}\n"
+            f"📝 Имя: {bot_info.get('first_name', 'Нет')}\n\n"
             f"Теперь введите название для вашего бота "
             f"(как он будет отображаться в меню):\n\n"
-            f"_Например: Мой Салон, Барбершоп Иван и т.д._",
-            parse_mode="Markdown"
+            f"Например: Мой Салон, Барбершоп Иван и т.д."
         )
 
         await state.set_state(ConnectBotStates.waiting_for_bot_name)
@@ -226,11 +226,14 @@ async def process_bot_token(
 @router.message(ConnectBotStates.waiting_for_bot_name)
 async def process_bot_name(
     message: Message,
-    state: FSMContext,
-    master_repo: MasterRepository,
-    bot_repo: BotRepository
+    state: FSMContext
 ) -> None:
     """Process bot name and create bot"""
+    from src.utils.repositories import get_master_repo, get_bot_repo
+
+    master_repo = get_master_repo()
+    bot_repo = get_bot_repo()
+
     bot_name = message.text.strip()
 
     if len(bot_name) < 2 or len(bot_name) > 50:
@@ -262,25 +265,35 @@ async def process_bot_name(
             bot_name=bot_name
         )
 
-        # TODO: Call Factory Service to create container
-        # For now, just mark as running
-        await bot_repo.update_bot_container(bot_id, "pending", "creating")
+        # Call Factory Service to create container
+        try:
+            container_info = await trigger_bot_creation(str(bot_id), token)
+            if container_info:
+                logger.info(f"Container created: {container_info.get('container_id')}")
+                await bot_repo.update_bot_container(
+                    bot_id,
+                    container_info.get('container_id'),
+                    "creating"
+                )
+            else:
+                logger.warning(f"Failed to create container for bot {bot_id}")
+                await bot_repo.update_bot_container(bot_id, None, "error")
+        except Exception as e:
+            logger.error(f"Error creating container: {e}")
+            await bot_repo.update_bot_container(bot_id, None, "error")
 
         await message.answer(
             "✅ *Бот успешно создан!*\n\n"
             f"🤖 @{bot_username}\n"
             f"📝 {bot_name}\n\n"
-            "_Контейнер бота создаётся..._\n\n"
+            "✨ Контейнер бота создаётся...\n\n"
             "Это может занять 1-2 минуты. "
-            "Вы получите уведомление когда бот будет готов.",
+            "Бот появится в списке ваших ботов.",
             parse_mode="Markdown",
             reply_markup=get_main_menu_keyboard()
         )
 
         logger.info(f"Bot {bot_id} (@{bot_username}) created by user {message.from_user.id}")
-
-        # TODO: Trigger async container creation via Factory Service
-        # await trigger_bot_creation(bot_id, token)
 
         await state.clear()
 
@@ -293,11 +306,12 @@ async def process_bot_name(
 
 
 @router.callback_query(F.data.startswith("bot_menu:"))
-async def show_bot_menu(
-    callback: CallbackQuery,
-    bot_repo: BotRepository
-) -> None:
+async def show_bot_menu(callback: CallbackQuery) -> None:
     """Show bot management menu"""
+    from src.utils.repositories import get_bot_repo
+
+    bot_repo = get_bot_repo()
+
     bot_id = callback.data.split(":")[1]
 
     try:
@@ -336,6 +350,241 @@ async def show_bot_menu(
         await callback.answer("❌ Ошибка при загрузке меню бота", show_alert=True)
 
 
+@router.callback_query(F.data.startswith("bot_schedule:"))
+async def bot_manage_schedule(callback: CallbackQuery) -> None:
+    """Manage bot schedule"""
+    bot_id = callback.data.split(":")[1]
+
+    # Navigate to schedule management for this bot
+    # For now, just show a message
+    text = (
+        "📅 *Управление расписанием*\n\n"
+        f"Бот ID: {bot_id[:8]}...\n\n"
+        "Выберите действие:"
+    )
+
+    from src.keyboards import get_schedule_menu_keyboard
+
+    # Get the keyboard and modify the back button
+    keyboard = get_schedule_menu_keyboard()
+    # Update back button to return to bot menu
+    keyboard.inline_keyboard[-1] = [
+        InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")
+    ]
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bot_appointments:"))
+async def bot_view_appointments(callback: CallbackQuery) -> None:
+    """View bot appointments"""
+    bot_id = callback.data.split(":")[1]
+
+    text = (
+        "📋 *Записи клиентов*\n\n"
+        f"Бот ID: {bot_id[:8]}...\n\n"
+        "_Загрузка записей..._\n\n"
+        "Функция в разработке 🔨"
+    )
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bot_clients:"))
+async def bot_view_clients(callback: CallbackQuery) -> None:
+    """View bot clients"""
+    bot_id = callback.data.split(":")[1]
+
+    text = (
+        "👥 *Клиенты*\n\n"
+        f"Бот ID: {bot_id[:8]}...\n\n"
+        "_Загрузка клиентов..._\n\n"
+        "Функция в разработке 🔨"
+    )
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bot_restart:"))
+async def bot_restart(callback: CallbackQuery) -> None:
+    """Restart bot container"""
+    bot_id = callback.data.split(":")[1]
+
+    await callback.answer("🔄 Перезапуск бота...", show_alert=True)
+
+    # TODO: Call Factory Service to restart container
+    # async with httpx.AsyncClient() as client:
+    #     await client.post(f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/restart")
+
+    text = (
+        "✅ *Бот перезапускается*\n\n"
+        "Это может занять 30-60 секунд.\n\n"
+        "Вы получите уведомление когда бот будет снова доступен."
+    )
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+
+
+@router.callback_query(F.data.startswith("bot_stop:"))
+async def bot_stop(callback: CallbackQuery) -> None:
+    """Stop bot container"""
+    bot_id = callback.data.split(":")[1]
+
+    # Show confirmation
+    from src.keyboards import get_confirmation_keyboard
+
+    text = (
+        "⚠️ *Остановить бота?*\n\n"
+        "После остановки бот не будет отвечать на сообщения клиентов.\n\n"
+        "Вы сможете запустить его снова в любое время."
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=get_confirmation_keyboard("stop_bot", bot_id)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bot_services:"))
+async def bot_manage_services(callback: CallbackQuery) -> None:
+    """Manage bot services"""
+    from src.utils.repositories import get_bot_repo
+
+    bot_repo = get_bot_repo()
+
+    bot_id = callback.data.split(":")[1]
+
+    try:
+        # Get bot services
+        services = await bot_repo.get_bot_services(bot_id)
+
+        if not services:
+            text = "📝 *Услуги*\n\nУ вас пока нет услуг."
+        else:
+            text = f"📝 *Услуги* ({len(services)})\n\nВыберите услугу для управления:"
+
+        from src.keyboards import get_services_list_keyboard
+        keyboard = get_services_list_keyboard(bot_id, services)
+
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error loading services: {e}")
+        await callback.answer("❌ Ошибка при загрузке услуг", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("confirm:stop_bot:"))
+async def confirm_stop_bot(callback: CallbackQuery) -> None:
+    """Confirm bot stop"""
+    bot_id = callback.data.split(":")[2]
+
+    # TODO: Call Factory Service to stop container
+    # async with httpx.AsyncClient() as client:
+    #     await client.post(f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/stop")
+
+    text = (
+        "✅ *Бот остановлен*\n\n"
+        "Клиенты не могут записываться пока бот остановлен.\n\n"
+        "Нажмите *Запустить* чтобы снова активировать бота."
+    )
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="▶️ Запустить", callback_data=f"bot_start:{bot_id}")
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")
+            ]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bot_start:"))
+async def bot_start(callback: CallbackQuery) -> None:
+    """Start bot container"""
+    bot_id = callback.data.split(":")[1]
+
+    # TODO: Call Factory Service to start container
+    # async with httpx.AsyncClient() as client:
+    #     await client.post(f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/start")
+
+    text = (
+        "✅ *Бот запускается*\n\n"
+        "Это может занять 30-60 секунд.\n\n"
+        "Бот скоро начнет принимать записи."
+    )
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
 # ============================================
 # Helper Functions
 # ============================================
@@ -368,11 +617,16 @@ async def verify_bot_token(token: str) -> dict:
         return None
 
 
-async def trigger_bot_creation(bot_id: str, token: str) -> None:
+async def trigger_bot_creation(bot_id: str, token: str) -> dict:
     """
     Trigger bot container creation via Factory Service
 
-    TODO: Implement this when Factory Service is ready
+    Args:
+        bot_id: Bot UUID
+        token: Decrypted bot token
+
+    Returns:
+        Container info dict if successful, None otherwise
     """
     settings = get_settings()
 
@@ -381,16 +635,24 @@ async def trigger_bot_creation(bot_id: str, token: str) -> None:
             response = await client.post(
                 f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/",
                 json={
-                    "bot_id": str(bot_id),
-                    "bot_token": token
+                    "bot_id": bot_id,
+                    "bot_token": token,
+                    "bot_username": "",  # Will be filled by Factory Service
                 },
                 timeout=30.0
             )
 
             if response.status_code == 200:
-                logger.info(f"Bot creation triggered: {bot_id}")
+                data = response.json()
+                logger.info(f"Bot creation triggered successfully: {bot_id}")
+                return {
+                    "container_id": data.get("container_id"),
+                    "status": data.get("status")
+                }
             else:
-                logger.error(f"Failed to trigger bot creation: {response.status_code}")
+                logger.error(f"Failed to trigger bot creation: {response.status_code} - {response.text}")
+                return None
 
         except Exception as e:
             logger.error(f"Error calling Factory Service: {e}")
+            return None

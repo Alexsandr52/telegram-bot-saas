@@ -8,9 +8,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from loguru import logger
 
-from src.keyboards import get_services_keyboard, get_dates_keyboard, get_main_menu_keyboard, get_time_slots_keyboard
-from src.utils.config import get_config_manager
-from src.utils.db import get_database
+from keyboards import get_services_keyboard, get_dates_keyboard, get_main_menu_keyboard, get_time_slots_keyboard
+from utils.config import get_config_manager
+from utils.db import get_database
 
 
 router = Router(name="services")

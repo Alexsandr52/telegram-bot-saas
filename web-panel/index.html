@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot SaaS - Вход</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo">
+                <h1>🤖 Bot SaaS</h1>
+                <p>Панель управления</p>
+            </div>
+
+            <div class="login-form">
+                <div class="form-group">
+                    <label for="token">Код из бота</label>
+                    <input
+                        type="text"
+                        id="token"
+                        class="form-input"
+                        placeholder="Например: ABC12345"
+                        maxlength="8"
+                        autocomplete="off"
+                    >
+                    <small class="help-text">
+                        Получите код в Telegram-боте: 🌐 Веб-панель
+                    </small>
+                </div>
+
+                <button id="loginBtn" class="btn btn-primary btn-block">
+                    Войти
+                </button>
+
+                <div id="errorMsg" class="error-msg" style="display: none;"></div>
+            </div>
+
+            <div class="login-footer">
+                <p>Нет кода?</p>
+                <ol>
+                    <li>Откройте Platform Bot в Telegram</li>
+                    <li>Нажмите 🌐 Веб-панель</li>
+                    <li>Скопируйте полученный код</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/js/api.js"></script>
+    <script src="static/js/login.js"></script>
+</body>
+</html>

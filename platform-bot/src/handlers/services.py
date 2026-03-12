@@ -246,11 +246,12 @@ async def process_service_description(message: Message, state: FSMContext) -> No
 # ============================================
 
 @router.callback_query(F.data.startswith("edit_service:"))
-async def start_edit_service(callback: CallbackQuery, state: FSMContext, service_repo) -> None:
+async def start_edit_service(callback: CallbackQuery, state: FSMContext) -> None:
     """Show edit options for a service"""
     service_id = callback.data.split(":")[1]
 
     try:
+        service_repo = get_service_repo()
         service = await service_repo.get_service(service_id)
         if not service:
             await callback.answer("❌ Услуга не найдена", show_alert=True)
@@ -280,11 +281,12 @@ async def start_edit_service(callback: CallbackQuery, state: FSMContext, service
 
 
 @router.callback_query(F.data.startswith("service_toggle_active:"))
-async def toggle_service_active(callback: CallbackQuery, service_repo) -> None:
+async def toggle_service_active(callback: CallbackQuery) -> None:
     """Toggle service active status"""
     service_id = callback.data.split(":")[1]
 
     try:
+        service_repo = get_service_repo()
         service = await service_repo.get_service(service_id)
         if not service:
             await callback.answer("❌ Услуга не найдена", show_alert=True)
@@ -326,11 +328,12 @@ async def confirm_delete_service(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith("confirm_delete_service:"))
-async def delete_service(callback: CallbackQuery, service_repo) -> None:
+async def delete_service(callback: CallbackQuery) -> None:
     """Delete a service"""
     service_id = callback.data.split(":")[1]
 
     try:
+        service_repo = get_service_repo()
         await service_repo.delete_service(service_id)
         await callback.answer("✅ Услуга удалена")
 

@@ -105,7 +105,7 @@ services:
       BOT_WEBHOOK_SECRET: ${PLATFORM_BOT_WEBHOOK_SECRET}
 
       # Database
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@database:5432/${POSTGRES_DB:-bot_saas}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@database:5432/${POSTGRES_DB:-bot_saas}
 
       # Redis
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379/0
@@ -118,6 +118,9 @@ services:
       # Factory Service
       FACTORY_SERVICE_URL: http://factory-service:8002
 
+      # Web Panel URL
+      WEB_PANEL_URL: ${WEB_PANEL_URL:-http://localhost:3000}
+
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
@@ -128,6 +131,102 @@ services:
       - redis
     volumes:
       - ./platform-bot/src:/app/src
+
+  # ============================================
+  # Factory Service (Bot container management)
+  # ============================================
+  factory-service:
+    build:
+      context: ./factory-service
+      dockerfile: Dockerfile
+    container_name: bot_saas_factory_service
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@database:5432/${POSTGRES_DB:-bot_saas}
+
+      # Docker
+      DOCKER_HOST: unix:///var/run/docker.sock
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks:
+      - bot_saas_network
+    depends_on:
+      - database
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./factory-service/src:/app/src
+    ports:
+      - "8002:8002"
+
+  # ============================================
+  # Web API (Backend for web panel)
+  # ============================================
+  web-api:
+    build:
+      context: ./web-api
+      dockerfile: Dockerfile
+    container_name: bot_saas_web_api
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@database:5432/${POSTGRES_DB:-bot_saas}
+
+      # Security
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:80}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+    networks:
+      - bot_saas_network
+    depends_on:
+      - database
+    ports:
+      - "8000:8000"
+
+  # ============================================
+  # Web Panel (Frontend for masters)
+  # ============================================
+  web-panel:
+    build:
+      context: ./web-panel
+      dockerfile: Dockerfile
+    container_name: bot_saas_web_panel
+    restart: unless-stopped
+    networks:
+      - bot_saas_network
+    ports:
+      - "3000:80"
+
+  # ============================================
+  # Nginx (API Gateway & Reverse Proxy)
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: bot_saas_nginx
+    restart: unless-stopped
+    networks:
+      - bot_saas_network
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - platform-bot
+      - factory-service
+      - web-api
+      - web-panel
 
 # ============================================
 # Networks

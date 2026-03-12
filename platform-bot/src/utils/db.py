@@ -697,25 +697,27 @@ class ScheduleRepository:
     async def get_bot_schedules(self, bot_id: uuid.UUID) -> List[Dict]:
         """Get schedule for all days of week for a bot"""
         query = """
-            SELECT day_of_week, start_time, end_time, is_available
+            SELECT day_of_week, start_time, end_time, is_working_day,
+                   break_start_time, break_end_time
             FROM schedules
             WHERE bot_id = $1
             ORDER BY day_of_week
         """
         rows = await self.db.fetch(query, bot_id)
-        return rows
+        return [dict(row) for row in rows]
 
     async def get_schedule_for_day(
         self, bot_id: uuid.UUID, day_of_week: int
     ) -> Optional[Dict]:
         """Get schedule for specific day of week"""
         query = """
-            SELECT day_of_week, start_time, end_time, is_available
+            SELECT day_of_week, start_time, end_time, is_working_day,
+                   break_start_time, break_end_time
             FROM schedules
             WHERE bot_id = $1 AND day_of_week = $2
         """
         row = await self.db.fetchrow(query, bot_id, day_of_week)
-        return row
+        return dict(row) if row else None
 
     async def set_schedule(
         self,
@@ -723,29 +725,99 @@ class ScheduleRepository:
         day_of_week: int,
         start_time: str,
         end_time: str,
-        is_available: bool = True
+        is_working_day: bool = True,
+        break_start_time: str = None,
+        break_end_time: str = None
     ) -> None:
         """Set schedule for a day of week"""
         query = """
-            INSERT INTO schedules (bot_id, day_of_week, start_time, end_time, is_available)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO schedules (bot_id, day_of_week, start_time, end_time,
+                                  is_working_day, break_start_time, break_end_time)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (bot_id, day_of_week)
             DO UPDATE SET
                 start_time = EXCLUDED.start_time,
                 end_time = EXCLUDED.end_time,
-                is_available = EXCLUDED.is_available,
+                is_working_day = EXCLUDED.is_working_day,
+                break_start_time = EXCLUDED.break_start_time,
+                break_end_time = EXCLUDED.break_end_time,
                 updated_at = NOW()
         """
-        await self.db.execute(query, bot_id, day_of_week, start_time, end_time, is_available)
+        await self.db.execute(query, bot_id, day_of_week, start_time, end_time,
+                             is_working_day, break_start_time, break_end_time)
         logger.info(f"Schedule updated for bot {bot_id}, day {day_of_week}")
 
     async def set_day_unavailable(self, bot_id: uuid.UUID, day_of_week: int) -> None:
         """Mark a day as unavailable (day off)"""
         query = """
-            INSERT INTO schedules (bot_id, day_of_week, start_time, end_time, is_available)
+            INSERT INTO schedules (bot_id, day_of_week, start_time, end_time, is_working_day)
             VALUES ($1, $2, '00:00:00', '00:00:00', false)
             ON CONFLICT (bot_id, day_of_week)
-            DO UPDATE SET is_available = false, updated_at = NOW()
+            DO UPDATE SET is_working_day = false, updated_at = NOW()
         """
         await self.db.execute(query, bot_id, day_of_week)
         logger.info(f"Day {day_of_week} marked as unavailable for bot {bot_id}")
+
+
+class SessionRepository:
+    """Repository for user_sessions table operations"""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    async def create_session(
+        self,
+        master_id: uuid.UUID,
+        session_token: str,
+        ip_address: str = None,
+        user_agent: str = None,
+        expires_hours: int = 24
+    ) -> uuid.UUID:
+        """Create a new web session for a master"""
+        from datetime import timedelta
+
+        query = """
+            INSERT INTO user_sessions (master_id, session_token, ip_address, user_agent, expires_at)
+            VALUES ($1, $2, $3, $4, NOW() + $5 * INTERVAL '1 hour')
+            RETURNING id
+        """
+        session_id = await self.db.fetchval(
+            query, master_id, session_token, ip_address, user_agent, expires_hours
+        )
+        logger.info(f"Session created: {session_id} for master {master_id}")
+        return session_id
+
+    async def get_session(self, session_token: str) -> Optional[Dict]:
+        """Get session by token"""
+        query = """
+            SELECT id, master_id, session_token, ip_address, user_agent,
+                   expires_at, created_at, last_used_at
+            FROM user_sessions
+            WHERE session_token = $1 AND expires_at > NOW()
+        """
+        row = await self.db.fetchrow(query, session_token)
+        return dict(row) if row else None
+
+    async def update_session_activity(self, session_token: str) -> None:
+        """Update session last_used_at"""
+        query = """
+            UPDATE user_sessions
+            SET last_used_at = NOW()
+            WHERE session_token = $1
+        """
+        await self.db.execute(query, session_token)
+
+    async def delete_session(self, session_token: str) -> None:
+        """Delete session by token"""
+        query = "DELETE FROM user_sessions WHERE session_token = $1"
+        await self.db.execute(query, session_token)
+        logger.info(f"Session deleted: {session_token}")
+
+    async def delete_expired_sessions(self) -> int:
+        """Delete all expired sessions"""
+        query = "DELETE FROM user_sessions WHERE expires_at <= NOW()"
+        result = await self.db.execute(query)
+        # result is like "DELETE 5"
+        count = int(result.split()[-1]) if result else 0
+        logger.info(f"Deleted {count} expired sessions")
+        return count

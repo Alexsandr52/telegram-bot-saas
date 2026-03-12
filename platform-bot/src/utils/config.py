@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     FACTORY_SERVICE_TIMEOUT: int = 30  # seconds
 
     # ============================================
+    # Web Panel
+    # ============================================
+    WEB_PANEL_URL: str = Field(
+        default="http://localhost:3000",
+        description="Web panel URL for masters"
+    )
+
+    # ============================================
     # Docker
     # ============================================
     DOCKER_HOST: Optional[str] = Field(

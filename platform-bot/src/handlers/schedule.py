@@ -58,29 +58,129 @@ async def show_schedule_menu(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == "view_schedule")
-async def view_schedule(callback: CallbackQuery, bot_id: str = None) -> None:
-    """View current schedule"""
-    schedule_repo = get_schedule_repo()
+async def view_schedule(callback: CallbackQuery) -> None:
+    """View current schedule - shows list of master's bots to select"""
+    from src.utils.repositories import get_master_repo, get_bot_repo
 
-    # For now, show a placeholder
-    # TODO: Get actual bot_id from context
-    text = (
-        "📊 *Текущее расписание*\n\n"
-        "_Функция в разработке_\n\n"
-        "Выберите бота для просмотра его расписания."
-    )
+    master_repo = get_master_repo()
+    bot_repo = get_bot_repo()
 
-    await callback.message.edit_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=create_back_button("manage_schedule")
-    )
-    await callback.answer()
+    telegram_id = callback.from_user.id
+
+    try:
+        # Get master
+        master = await master_repo.get_master_by_telegram_id(telegram_id)
+        if not master:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
+            return
+
+        # Get bots
+        bots = await bot_repo.get_master_bots(master['id'])
+
+        if not bots:
+            text = (
+                "📊 *Текущее расписание*\n\n"
+                "У вас пока нет добавленных ботов.\n\n"
+                "Сначала создайте бота для управления его расписанием."
+            )
+            keyboard = create_back_button("manage_schedule")
+        else:
+            text = (
+                "📊 *Текущее расписание*\n\n"
+                "Выберите бота для просмотра его расписания:"
+            )
+            # Create bot selection keyboard
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            buttons = []
+            for bot in bots:
+                bot_name = bot.get('bot_name') or bot.get('bot_username', 'Unnamed')
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"🤖 {bot_name}",
+                        callback_data=f"view_bot_schedule:{bot['id']}"
+                    )
+                ])
+            buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="manage_schedule")])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in view_schedule: {e}")
+        await callback.answer("❌ Ошибка при загрузке расписания", show_alert=True)
 
 
 @router.callback_query(F.data == "set_working_hours")
 async def set_working_hours(callback: CallbackQuery, state: FSMContext) -> None:
-    """Start setting working hours flow"""
+    """Start setting working hours flow - select bot first"""
+    from src.utils.repositories import get_master_repo, get_bot_repo
+
+    master_repo = get_master_repo()
+    bot_repo = get_bot_repo()
+
+    telegram_id = callback.from_user.id
+
+    try:
+        # Get master
+        master = await master_repo.get_master_by_telegram_id(telegram_id)
+        if not master:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
+            return
+
+        # Get bots
+        bots = await bot_repo.get_master_bots(master['id'])
+
+        if not bots:
+            text = (
+                "🕐 *Настройка рабочих часов*\n\n"
+                "У вас пока нет добавленных ботов.\n\n"
+                "Сначала создайте бота для управления его расписанием."
+            )
+            keyboard = create_back_button("manage_schedule")
+        else:
+            text = (
+                "🕐 *Настройка рабочих часов*\n\n"
+                "Выберите бота для настройки расписания:"
+            )
+            # Create bot selection keyboard
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            buttons = []
+            for bot in bots:
+                bot_name = bot.get('bot_name') or bot.get('bot_username', 'Unnamed')
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"🤖 {bot_name}",
+                        callback_data=f"set_bot_schedule:{bot['id']}"
+                    )
+                ])
+            buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="manage_schedule")])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in set_working_hours: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("set_bot_schedule:"))
+async def set_bot_schedule(callback: CallbackQuery, state: FSMContext) -> None:
+    """Show day selection for bot schedule"""
+    bot_id = callback.data.split(":")[1]
+
+    # Store bot_id in state
+    await state.update_data(bot_id=bot_id)
+
     text = (
         "🕐 *Настройка рабочих часов*\n\n"
         "Выберите день недели для настройки:\n\n"
@@ -98,18 +198,68 @@ async def set_working_hours(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("view_bot_schedule:"))
+async def view_bot_schedule(callback: CallbackQuery) -> None:
+    """View schedule for specific bot"""
+    bot_id = callback.data.split(":")[1]
+    schedule_repo = get_schedule_repo()
+
+    try:
+        schedules = await schedule_repo.get_bot_schedules(bot_id)
+
+        if not schedules:
+            text = (
+                "📊 *Расписание бота*\n\n"
+                "Расписание не настроено.\n\n"
+                "Выберите *🕐 Рабочие часы* для настройки."
+            )
+        else:
+            day_names = {
+                1: "Понедельник", 2: "Вторник", 3: "Среда", 4: "Четверг",
+                5: "Пятница", 6: "Суббота", 7: "Воскресенье"
+            }
+
+            text = "📊 *Расписание бота*\n\n"
+            for sched in schedules:
+                day_name = day_names.get(sched['day_of_week'], f"День {sched['day_of_week']}")
+                if sched['is_working_day']:
+                    text += (
+                        f"{day_name}: {sched['start_time'][:5]} - {sched['end_time'][:5]}\n"
+                    )
+                else:
+                    text += f"{day_name}: Выходной\n"
+
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="manage_schedule")]
+            ]
+        )
+
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error viewing bot schedule: {e}")
+        await callback.answer("❌ Ошибка при загрузке расписания", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("set_day:"), ScheduleStates.selecting_day)
 async def select_day(callback: CallbackQuery, state: FSMContext) -> None:
     """Handle day selection"""
-    day_num = callback.data.split(":")[1]
+    day_num = int(callback.data.split(":")[1])
     day_names = {
-        "1": "Понедельник",
-        "2": "Вторник",
-        "3": "Среда",
-        "4": "Четверг",
-        "5": "Пятница",
-        "6": "Суббота",
-        "7": "Воскресенье"
+        1: "Понедельник",
+        2: "Вторник",
+        3: "Среда",
+        4: "Четверг",
+        5: "Пятница",
+        6: "Суббота",
+        7: "Воскресенье"
     }
 
     day_name = day_names.get(day_num, "День")
@@ -168,31 +318,55 @@ async def process_end_time(message: Message, state: FSMContext) -> None:
             raise ValueError("Invalid time")
 
         data = await state.get_data()
+        bot_id = data.get('bot_id')
         day_num = data.get('day_of_week')
         start_time = data.get('start_time')
 
-        # TODO: Save to database
-        # schedule_repo = get_schedule_repo()
-        # await schedule_repo.set_working_day(...)
+        if not bot_id:
+            await message.answer("❌ Ошибка: бот не выбран. Начните заново.")
+            await state.clear()
+            return
+
+        # Save to database
+        schedule_repo = get_schedule_repo()
+        await schedule_repo.set_schedule(
+            bot_id=bot_id,
+            day_of_week=day_num,
+            start_time=start_time,
+            end_time=time_str,
+            is_working_day=True
+        )
+
+        day_names = {
+            1: "Понедельник", 2: "Вторник", 3: "Среда", 4: "Четверг",
+            5: "Пятница", 6: "Суббота", 7: "Воскресенье"
+        }
+        day_name = day_names.get(day_num, f"День {day_num}")
 
         await message.answer(
             f"✅ *Расписание сохранено!*\n\n"
-            f"📅 День: {day_num}\n"
+            f"📅 {day_name}\n"
             f"🕐 С: {start_time}\n"
             f"🕐 До: {time_str}\n\n"
-            f"_В базе данных сохранено_",
+            f"_Бот будет принимать записи в это время_",
             parse_mode="Markdown",
             reply_markup=create_back_button("manage_schedule")
         )
 
         await state.clear()
 
-    except Exception:
+    except ValueError:
         await message.answer(
             "❌ Неверный формат времени. Используйте формат ЧЧ:ММ\n\n"
             "_Например: 18:00_",
             parse_mode="Markdown"
         )
+    except Exception as e:
+        logger.error(f"Error saving schedule: {e}")
+        await message.answer(
+            "❌ Ошибка при сохранении. Попробуйте позже."
+        )
+        await state.clear()
 
 
 @router.callback_query(F.data == "add_exception")

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot SaaS - Панель управления</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>🤖 Bot SaaS</h2>
+            </div>
+
+            <nav>
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-page="bots">
+                            <span class="icon">🤖</span>
+                            Мои боты
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-page="appointments">
+                            <span class="icon">📋</span>
+                            Записи
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <div style="margin-top: auto; padding-top: 24px; border-top: 1px solid var(--border-color);">
+                <a class="nav-link" id="logoutBtn">
+                    <span class="icon">🚪</span>
+                    Выйти
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Bots Page -->
+            <div id="botsPage" class="page active">
+                <div class="content-header">
+                    <h1>Мои боты</h1>
+                    <p class="breadcrumb">Выберите бота для управления</p>
+                </div>
+
+                <div id="botsList"></div>
+            </div>
+
+            <!-- Bot Detail Page -->
+            <div id="botDetailPage" class="page" style="display: none;">
+                <div class="content-header">
+                    <h1 id="botTitle">Бот</h1>
+                    <p class="breadcrumb"><a href="#" onclick="showPage('bots')">← Назад к ботам</a></p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">📋 Записи</h3>
+                        <div>
+                            <select id="statusFilter" class="form-input" style="width: auto;">
+                                <option value="">Все статусы</option>
+                                <option value="pending">Ожидают</option>
+                                <option value="confirmed">Подтверждены</option>
+                                <option value="completed">Завершены</option>
+                                <option value="cancelled">Отменены</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="appointmentsList"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">📝 Услуги</h3>
+                        <button class="btn btn-primary btn-sm" onclick="showAddServiceModal()">+ Добавить</button>
+                    </div>
+                    <div id="servicesList"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">📅 Расписание</h3>
+                    </div>
+                    <div id="scheduleList"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="static/js/api.js"></script>
+    <script src="static/js/dashboard.js"></script>
+</body>
+</html>

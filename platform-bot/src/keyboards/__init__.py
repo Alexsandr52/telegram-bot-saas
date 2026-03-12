@@ -31,6 +31,12 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
+                text="🌐 Веб-панель",
+                callback_data="web_panel"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text="💳 Подписка",
                 callback_data="subscription"
             )
@@ -422,9 +428,7 @@ def get_days_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="Суббота", callback_data="set_day:6")
         ],
         [
-            InlineKeyboardButton(text="Воскресенье", callback_data="set_day:7")
-        ],
-        [
+            InlineKeyboardButton(text="Воскресенье", callback_data="set_day:7"),
             InlineKeyboardButton(text="🔙 Назад", callback_data="manage_schedule")
         ],
     ]

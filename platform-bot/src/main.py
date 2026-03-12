@@ -20,7 +20,7 @@ from src.utils.db import Database
 from src.utils.repositories import init_repositories
 
 # Import routers
-from src.handlers import start, connect_bot, services, appointments, schedule
+from src.handlers import start, connect_bot, services, appointments, schedule, auth
 
 
 # ============================================
@@ -78,6 +78,7 @@ async def main() -> None:
     dp.include_router(services.router)
     dp.include_router(appointments.router)
     dp.include_router(schedule.router)
+    dp.include_router(auth.router)
 
     # Get bot info
     try:

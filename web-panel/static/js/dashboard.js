@@ -169,19 +169,28 @@ async function loadBotAppointments(botId) {
                             <th>Дата</th>
                             <th>Клиент</th>
                             <th>Услуга</th>
+                            <th>Цена</th>
                             <th>Статус</th>
+                            <th>Действия</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${response.appointments.map(appt => `
                             <tr>
-                                <td>${formatDate(appt.start_time)}</td>
+                                <td>
+                                    <strong>${formatDate(appt.start_time)}</strong><br>
+                                    <small style="color: var(--text-secondary);">${formatTime(appt.start_time)} - ${formatTime(appt.end_time)}</small>
+                                </td>
                                 <td>
                                     ${appt.client_first_name || ''} ${appt.client_last_name || ''}<br>
-                                    <small style="color: var(--text-secondary);">${appt.client_phone || ''}</small>
+                                    <small style="color: var(--text-secondary);">${appt.client_phone || 'Нет телефона'}</small>
                                 </td>
                                 <td>${appt.service_name}</td>
+                                <td>${appt.price ? appt.price + ' ₽' : '—'}</td>
                                 <td>${STATUS_BADGES[appt.status] || appt.status}</td>
+                                <td>
+                                    ${getStatusActions(appt)}
+                                </td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -193,7 +202,7 @@ async function loadBotAppointments(botId) {
                     <div class="empty-state-icon">📋</div>
                     <div class="empty-state-title">Нет записей</div>
                     <div class="empty-state-description">
-                        Пока нет записей клиентов
+                        ${statusFilter ? 'Нет записей с выбранным статусом' : 'Пока нет записей клиентов'}
                     </div>
                 </div>
             `;
@@ -201,6 +210,44 @@ async function loadBotAppointments(botId) {
     } catch (error) {
         console.error('Error loading appointments:', error);
         container.innerHTML = `<p style="color: var(--danger-color);">Ошибка загрузки записей</p>`;
+    }
+}
+
+function formatTime(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getStatusActions(appointment) {
+    const actions = {
+        'pending': `
+            <button class="btn btn-sm btn-success" onclick="updateAppointmentStatus('${appointment.id}', 'confirmed')" title="Подтвердить">✅</button>
+            <button class="btn btn-sm btn-danger" onclick="updateAppointmentStatus('${appointment.id}', 'cancelled')" title="Отменить">❌</button>
+        `,
+        'confirmed': `
+            <button class="btn btn-sm btn-primary" onclick="updateAppointmentStatus('${appointment.id}', 'completed')" title="Завершить">✓</button>
+            <button class="btn btn-sm btn-danger" onclick="updateAppointmentStatus('${appointment.id}', 'cancelled')" title="Отменить">❌</button>
+        `,
+        'completed': `
+            <span style="color: var(--text-secondary);">—</span>
+        `,
+        'cancelled': `
+            <button class="btn btn-sm btn-secondary" onclick="updateAppointmentStatus('${appointment.id}', 'pending')" title="Восстановить">↻</button>
+        `
+    };
+
+    return actions[appointment.status] || '<span style="color: var(--text-secondary);">—</span>';
+}
+
+async function updateAppointmentStatus(appointmentId, newStatus) {
+    const token = Storage.getToken();
+
+    try {
+        await AppointmentsAPI.updateStatus(appointmentId, newStatus, token);
+        await loadBotAppointments(currentBotId);
+    } catch (error) {
+        console.error('Error updating appointment status:', error);
+        alert('Ошибка обновления статуса: ' + error.message);
     }
 }
 
@@ -217,21 +264,30 @@ async function loadBotServices(botId) {
                     <thead>
                         <tr>
                             <th>Название</th>
+                            <th>Описание</th>
                             <th>Цена</th>
                             <th>Длительность</th>
                             <th>Статус</th>
+                            <th>Действия</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${response.services.map(service => `
                             <tr>
-                                <td>${service.name}</td>
+                                <td><strong>${service.name}</strong></td>
+                                <td><small style="color: var(--text-secondary);">${service.description || '—'}</small></td>
                                 <td>${service.price} ₽</td>
                                 <td>${service.duration_minutes} мин</td>
                                 <td>${service.is_active ?
                                     '<span class="badge badge-success">Активна</span>' :
                                     '<span class="badge badge-danger">Скрыта</span>'
                                 }</td>
+                                <td>
+                                    <div class="action-buttons">
+                                        <button class="btn btn-sm btn-secondary" onclick='editService(${JSON.stringify(service)})'>✏️</button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteService('${service.id}', '${service.name}')">🗑️</button>
+                                    </div>
+                                </td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -267,30 +323,55 @@ async function loadBotSchedule(botId) {
                     <thead>
                         <tr>
                             <th>День</th>
+                            <th>Рабочий день</th>
                             <th>Время работы</th>
-                            <th>Статус</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${response.schedules.sort((a, b) => a.day_of_week - b.day_of_week).map(schedule => `
-                            <tr>
-                                <td>${DAY_NAMES[schedule.day_of_week] || schedule.day_of_week}</td>
+                            <tr data-day="${schedule.day_of_week}">
+                                <td><strong>${DAY_NAMES[schedule.day_of_week]}</strong></td>
                                 <td>
-                                    ${schedule.is_working_day ?
-                                        `${schedule.start_time.slice(0, 5)} - ${schedule.end_time.slice(0, 5)}` :
-                                        '—'
-                                    }
+                                    <label class="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            class="schedule-working-checkbox"
+                                            data-day="${schedule.day_of_week}"
+                                            ${schedule.is_working_day ? 'checked' : ''}
+                                            onchange="toggleScheduleDay(${schedule.day_of_week}, this.checked)"
+                                        >
+                                        <span>Работает</span>
+                                    </label>
                                 </td>
                                 <td>
-                                    ${schedule.is_working_day ?
-                                        '<span class="badge badge-success">Работает</span>' :
-                                        '<span class="badge badge-danger">Выходной</span>'
-                                    }
+                                    <div class="form-row" style="grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <input
+                                            type="time"
+                                            class="form-input schedule-time-input"
+                                            data-day="${schedule.day_of_week}"
+                                            data-field="start_time"
+                                            value="${schedule.start_time ? schedule.start_time.slice(0, 5) : '09:00'}"
+                                            ${!schedule.is_working_day ? 'disabled' : ''}
+                                            onchange="updateScheduleTime(${schedule.day_of_week}, 'start_time', this.value)"
+                                        >
+                                        <input
+                                            type="time"
+                                            class="form-input schedule-time-input"
+                                            data-day="${schedule.day_of_week}"
+                                            data-field="end_time"
+                                            value="${schedule.end_time ? schedule.end_time.slice(0, 5) : '18:00'}"
+                                            ${!schedule.is_working_day ? 'disabled' : ''}
+                                            onchange="updateScheduleTime(${schedule.day_of_week}, 'end_time', this.value)"
+                                        >
+                                    </div>
                                 </td>
                             </tr>
                         `).join('')}
                     </tbody>
                 </table>
+                <div style="margin-top: 16px; text-align: right;">
+                    <button class="btn btn-primary" onclick="saveSchedule()">💾 Сохранить расписание</button>
+                </div>
             `;
         } else {
             container.innerHTML = `<p style="color: var(--text-secondary);">Расписание не настроено</p>`;
@@ -298,6 +379,82 @@ async function loadBotSchedule(botId) {
     } catch (error) {
         console.error('Error loading schedule:', error);
         container.innerHTML = `<p style="color: var(--danger-color);">Ошибка загрузки расписания</p>`;
+    }
+}
+
+// Store schedule changes
+let scheduleChanges = {};
+
+function toggleScheduleDay(dayOfWeek, isWorking) {
+    const row = document.querySelector(`tr[data-day="${dayOfWeek}"]`);
+    const startInput = row.querySelector('input[data-field="start_time"]');
+    const endInput = row.querySelector('input[data-field="end_time"]');
+
+    startInput.disabled = !isWorking;
+    endInput.disabled = !isWorking;
+
+    scheduleChanges[dayOfWeek] = {
+        ...scheduleChanges[dayOfWeek],
+        is_working_day: isWorking
+    };
+}
+
+function updateScheduleTime(dayOfWeek, field, value) {
+    scheduleChanges[dayOfWeek] = {
+        ...scheduleChanges[dayOfWeek],
+        [field]: value
+    };
+}
+
+async function saveSchedule() {
+    const token = Storage.getToken();
+    const schedules = [];
+
+    // Collect all schedule data
+    document.querySelectorAll('tr[data-day]').forEach(row => {
+        const dayOfWeek = parseInt(row.getAttribute('data-day'));
+        const isWorking = row.querySelector('.schedule-working-checkbox').checked;
+        const startTime = row.querySelector('input[data-field="start_time"]').value;
+        const endTime = row.querySelector('input[data-field="end_time"]').value;
+
+        // For non-working days, send 00:00:00
+        const timeValue = isWorking ? (startTime + ':00') : '00:00:00';
+
+        schedules.push({
+            day_of_week: dayOfWeek,
+            start_time: timeValue,
+            end_time: timeValue,
+            is_working_day: isWorking
+        });
+    });
+
+    try {
+        await SchedulesAPI.update(currentBotId, schedules, token);
+        alert('✅ Расписание успешно сохранено!');
+        await loadBotSchedule(currentBotId);
+    } catch (error) {
+        console.error('Error saving schedule:', error);
+
+        // Extract error message from response
+        let errorMessage = 'Неизвестная ошибка';
+        if (error.response && error.response.data) {
+            const data = error.response.data;
+            if (data.detail) {
+                if (Array.isArray(data.detail)) {
+                    errorMessage = data.detail.map(e => e.msg || e).join(', ');
+                } else if (typeof data.detail === 'string') {
+                    errorMessage = data.detail;
+                } else {
+                    errorMessage = JSON.stringify(data.detail);
+                }
+            } else {
+                errorMessage = JSON.stringify(data);
+            }
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
+
+        alert('❌ Ошибка сохранения расписания:\n\n' + errorMessage);
     }
 }
 
@@ -338,5 +495,80 @@ async function handleLogout() {
 }
 
 function showAddServiceModal() {
-    alert('Функция добавления услуг будет реализована в следующей версии');
+    // Clear form
+    document.getElementById('serviceForm').reset();
+    document.getElementById('serviceId').value = '';
+    document.getElementById('serviceModalTitle').textContent = 'Добавить услугу';
+    document.getElementById('serviceActive').checked = true;
+
+    // Show modal
+    document.getElementById('serviceModal').style.display = 'flex';
+}
+
+function closeServiceModal() {
+    document.getElementById('serviceModal').style.display = 'none';
+}
+
+function editService(service) {
+    // Fill form with service data
+    document.getElementById('serviceId').value = service.id;
+    document.getElementById('serviceName').value = service.name;
+    document.getElementById('serviceDescription').value = service.description || '';
+    document.getElementById('servicePrice').value = service.price;
+    document.getElementById('serviceDuration').value = service.duration_minutes;
+    document.getElementById('serviceActive').checked = service.is_active;
+
+    // Update modal title
+    document.getElementById('serviceModalTitle').textContent = 'Редактировать услугу';
+
+    // Show modal
+    document.getElementById('serviceModal').style.display = 'flex';
+}
+
+async function handleServiceSubmit(event) {
+    event.preventDefault();
+
+    const token = Storage.getToken();
+    const serviceId = document.getElementById('serviceId').value;
+
+    const serviceData = {
+        name: document.getElementById('serviceName').value,
+        description: document.getElementById('serviceDescription').value,
+        price: parseFloat(document.getElementById('servicePrice').value),
+        duration_minutes: parseInt(document.getElementById('serviceDuration').value),
+        is_active: document.getElementById('serviceActive').checked
+    };
+
+    try {
+        if (serviceId) {
+            // Update existing service
+            await ServicesAPI.update(serviceId, serviceData, token);
+        } else {
+            // Create new service
+            await ServicesAPI.create(currentBotId, serviceData, token);
+        }
+
+        // Close modal and reload services
+        closeServiceModal();
+        await loadBotServices(currentBotId);
+    } catch (error) {
+        console.error('Error saving service:', error);
+        alert('Ошибка сохранения услуги: ' + error.message);
+    }
+}
+
+async function deleteService(serviceId, serviceName) {
+    if (!confirm(`Вы уверены, что хотите удалить услугу "${serviceName}"?`)) {
+        return;
+    }
+
+    const token = Storage.getToken();
+
+    try {
+        await ServicesAPI.delete(serviceId, token);
+        await loadBotServices(currentBotId);
+    } catch (error) {
+        console.error('Error deleting service:', error);
+        alert('Ошибка удаления услуги: ' + error.message);
+    }
 }

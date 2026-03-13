@@ -34,6 +34,9 @@ async def lifespan(app: FastAPI):
     docker_manager = DockerManager()
     await docker_manager.initialize()
 
+    # Store in app state for access in endpoints
+    app.state.docker_manager = docker_manager
+
     logger.info("Factory Service started successfully")
 
     yield

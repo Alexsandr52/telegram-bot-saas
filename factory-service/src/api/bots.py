@@ -1,7 +1,7 @@
 """
 Bot management API endpoints
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 from loguru import logger
@@ -38,12 +38,22 @@ class ContainerStatus(BaseModel):
 
 
 # ============================================
+# Helper Functions
+# ============================================
+
+def get_docker_manager(request: Request):
+    """Get Docker manager from app state"""
+    return request.app.state.docker_manager
+
+
+# ============================================
 # Endpoints
 # ============================================
 
 @router.post("/bots/", response_model=BotResponse)
 async def create_bot_container(
-    request: CreateBotRequest,
+    request: Request,
+    create_request: CreateBotRequest,
     background_tasks: BackgroundTasks
 ):
     """
@@ -56,21 +66,19 @@ async def create_bot_container(
     4. Starts the container
     """
     try:
-        # Import Docker manager
-        import main
-        docker_manager = main.docker_manager
+        docker_manager = get_docker_manager(request)
 
-        logger.info(f"Creating container for bot {request.bot_id} (@{request.bot_username})")
+        logger.info(f"Creating container for bot {create_request.bot_id} (@{create_request.bot_username})")
 
         # Create container
         container_id = await docker_manager.create_bot_container(
-            bot_id=request.bot_id,
-            bot_token=request.bot_token,
-            webhook_url=request.webhook_url
+            bot_id=create_request.bot_id,
+            bot_token=create_request.bot_token,
+            webhook_url=create_request.webhook_url
         )
 
         return BotResponse(
-            bot_id=request.bot_id,
+            bot_id=create_request.bot_id,
             container_id=container_id,
             status="creating",
             message="Bot container created successfully"
@@ -82,11 +90,10 @@ async def create_bot_container(
 
 
 @router.get("/bots/{bot_id}/status", response_model=ContainerStatus)
-async def get_bot_status(bot_id: str):
+async def get_bot_status(bot_id: str, request: Request):
     """Get status of a bot container"""
     try:
-        import main
-        docker_manager = main.docker_manager
+        docker_manager = get_docker_manager(request)
 
         container = await docker_manager.get_container(bot_id)
         if not container:
@@ -109,11 +116,10 @@ async def get_bot_status(bot_id: str):
 
 
 @router.post("/bots/{bot_id}/start")
-async def start_bot(bot_id: str):
+async def start_bot(bot_id: str, request: Request):
     """Start a bot container"""
     try:
-        import main
-        docker_manager = main.docker_manager
+        docker_manager = get_docker_manager(request)
 
         logger.info(f"Starting bot {bot_id}")
         await docker_manager.start_container(bot_id)
@@ -126,11 +132,10 @@ async def start_bot(bot_id: str):
 
 
 @router.post("/bots/{bot_id}/stop")
-async def stop_bot(bot_id: str):
+async def stop_bot(bot_id: str, request: Request):
     """Stop a bot container"""
     try:
-        import main
-        docker_manager = main.docker_manager
+        docker_manager = get_docker_manager(request)
 
         logger.info(f"Stopping bot {bot_id}")
         await docker_manager.stop_container(bot_id)
@@ -143,11 +148,10 @@ async def stop_bot(bot_id: str):
 
 
 @router.post("/bots/{bot_id}/restart")
-async def restart_bot(bot_id: str):
+async def restart_bot(bot_id: str, request: Request):
     """Restart a bot container"""
     try:
-        import main
-        docker_manager = main.docker_manager
+        docker_manager = get_docker_manager(request)
 
         logger.info(f"Restarting bot {bot_id}")
         await docker_manager.restart_container(bot_id)
@@ -160,15 +164,14 @@ async def restart_bot(bot_id: str):
 
 
 @router.delete("/bots/{bot_id}")
-async def delete_bot(bot_id: str):
+async def delete_bot(bot_id: str, request: Request):
     """
     Delete a bot container
 
     WARNING: This will permanently remove the container and all its data
     """
     try:
-        import main
-        docker_manager = main.docker_manager
+        docker_manager = get_docker_manager(request)
 
         logger.warning(f"Deleting bot {bot_id}")
         await docker_manager.delete_container(bot_id)
@@ -181,11 +184,10 @@ async def delete_bot(bot_id: str):
 
 
 @router.get("/bots")
-async def list_bots():
+async def list_bots(request: Request):
     """List all bot containers"""
     try:
-        import main
-        docker_manager = main.docker_manager
+        docker_manager = get_docker_manager(request)
 
         containers = await docker_manager.list_bot_containers()
 

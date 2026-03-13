@@ -282,13 +282,37 @@ class ScheduleRepository(Repository):
         self,
         bot_id: uuid.UUID,
         day_of_week: int,
-        start_time: str,
-        end_time: str,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
         is_working_day: bool = True,
         break_start_time: Optional[str] = None,
         break_end_time: Optional[str] = None
     ) -> None:
         """Set schedule for a day of week"""
+        from datetime import time
+
+        # Convert string times to time objects
+        start_time_obj = None
+        end_time_obj = None
+        break_start_obj = None
+        break_end_obj = None
+
+        if start_time:
+            h, m, s = map(int, start_time.split(':'))
+            start_time_obj = time(h, m, s)
+
+        if end_time:
+            h, m, s = map(int, end_time.split(':'))
+            end_time_obj = time(h, m, s)
+
+        if break_start_time:
+            h, m, s = map(int, break_start_time.split(':'))
+            break_start_obj = time(h, m, s)
+
+        if break_end_time:
+            h, m, s = map(int, break_end_time.split(':'))
+            break_end_obj = time(h, m, s)
+
         query = """
             INSERT INTO schedules (bot_id, day_of_week, start_time, end_time,
                                   is_working_day, break_start_time, break_end_time)
@@ -302,8 +326,8 @@ class ScheduleRepository(Repository):
                 break_end_time = EXCLUDED.break_end_time,
                 updated_at = NOW()
         """
-        await self.db.execute(query, bot_id, day_of_week, start_time, end_time,
-                             is_working_day, break_start_time, break_end_time)
+        await self.db.execute(query, bot_id, day_of_week, start_time_obj, end_time_obj,
+                             is_working_day, break_start_obj, break_end_obj)
         logger.info(f"Schedule updated for bot {bot_id}, day {day_of_week}")
 
 

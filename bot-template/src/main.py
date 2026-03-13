@@ -96,6 +96,22 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     return bot, dp
 
 
+async def config_reloader():
+    """Periodically reload bot configuration to pick up changes"""
+    from utils.config import get_config_manager as get_cfg
+    import asyncio
+
+    while True:
+        try:
+            await asyncio.sleep(60)  # Reload every 60 seconds
+            config_manager = get_cfg()
+            if config_manager:
+                await config_manager.reload_config()
+                logger.debug("Config reloaded")
+        except Exception as e:
+            logger.error(f"Error reloading config: {e}")
+
+
 async def main() -> None:
     """Main function to run the bot"""
 
@@ -110,12 +126,17 @@ async def main() -> None:
         logger.error(f"Failed to get bot info: {e}")
         return
 
+    # Start config reloader task
+    import asyncio
+    reloader_task = asyncio.create_task(config_reloader())
+
     # Start polling
     logger.info("Starting polling mode...")
     try:
         await dp.start_polling(bot)
     finally:
         # Cleanup
+        reloader_task.cancel()
         config_manager = get_config_manager()
         db = get_database()
 

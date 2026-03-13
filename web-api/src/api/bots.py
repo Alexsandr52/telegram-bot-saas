@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from loguru import logger
 
 from ..models import BotsListResponse, BotResponse, ErrorResponse
-from ..utils.db import BotRepository, SessionRepository
+from ..utils.db import BotRepository, MasterRepository, SessionRepository
 
 router = APIRouter(prefix="/bots", tags=["bots"])
 
@@ -37,8 +37,10 @@ async def get_bots(
     try:
         master_id = await get_master_id_from_token(token, db_instance)
 
-        bot_repo = BotRepository(db_instance)
-        bots = await bot_repo.get_master_bots(master_id)
+        # Convert string to UUID
+        import uuid
+        master_repo = MasterRepository(db_instance)
+        bots = await master_repo.get_master_bots(uuid.UUID(master_id))
 
         return BotsListResponse(
             bots=[

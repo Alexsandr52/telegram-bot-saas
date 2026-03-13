@@ -3,7 +3,7 @@ Schedule Handlers for Platform Bot
 Manage working hours and schedule exceptions
 """
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from loguru import logger
@@ -90,7 +90,6 @@ async def view_schedule(callback: CallbackQuery) -> None:
                 "Выберите бота для просмотра его расписания:"
             )
             # Create bot selection keyboard
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             buttons = []
             for bot in bots:
                 bot_name = bot.get('bot_name') or bot.get('bot_username', 'Unnamed')
@@ -148,7 +147,6 @@ async def set_working_hours(callback: CallbackQuery, state: FSMContext) -> None:
                 "Выберите бота для настройки расписания:"
             )
             # Create bot selection keyboard
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             buttons = []
             for bot in bots:
                 bot_name = bot.get('bot_name') or bot.get('bot_username', 'Unnamed')
@@ -223,13 +221,13 @@ async def view_bot_schedule(callback: CallbackQuery) -> None:
             for sched in schedules:
                 day_name = day_names.get(sched['day_of_week'], f"День {sched['day_of_week']}")
                 if sched['is_working_day']:
-                    text += (
-                        f"{day_name}: {sched['start_time'][:5]} - {sched['end_time'][:5]}\n"
-                    )
+                    # Convert time objects to strings
+                    start_str = str(sched['start_time'])[:5] if sched['start_time'] else '--:--'
+                    end_str = str(sched['end_time'])[:5] if sched['end_time'] else '--:--'
+                    text += f"{day_name}: {start_str} - {end_str}\n"
                 else:
                     text += f"{day_name}: Выходной\n"
 
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="🔙 Назад", callback_data="manage_schedule")]
@@ -320,20 +318,24 @@ async def process_end_time(message: Message, state: FSMContext) -> None:
         data = await state.get_data()
         bot_id = data.get('bot_id')
         day_num = data.get('day_of_week')
-        start_time = data.get('start_time')
+        start_time_str = data.get('start_time')
 
         if not bot_id:
             await message.answer("❌ Ошибка: бот не выбран. Начните заново.")
             await state.clear()
             return
 
-        # Save to database
+        # Parse start time
+        start_hours, start_minutes = map(int, start_time_str.split(':'))
+
+        # Save to database - convert strings to time objects
+        from datetime import time
         schedule_repo = get_schedule_repo()
         await schedule_repo.set_schedule(
             bot_id=bot_id,
             day_of_week=day_num,
-            start_time=start_time,
-            end_time=time_str,
+            start_time=time(start_hours, start_minutes),
+            end_time=time(hours, minutes),
             is_working_day=True
         )
 
@@ -344,11 +346,11 @@ async def process_end_time(message: Message, state: FSMContext) -> None:
         day_name = day_names.get(day_num, f"День {day_num}")
 
         await message.answer(
-            f"✅ *Расписание сохранено!*\n\n"
+            "✅ *Расписание сохранено!*\n\n"
             f"📅 {day_name}\n"
-            f"🕐 С: {start_time}\n"
+            f"🕐 С: {start_time_str}\n"
             f"🕐 До: {time_str}\n\n"
-            f"_Бот будет принимать записи в это время_",
+            "_Бот будет принимать записи в это время_",
             parse_mode="Markdown",
             reply_markup=create_back_button("manage_schedule")
         )

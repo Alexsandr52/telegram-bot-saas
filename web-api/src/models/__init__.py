@@ -1,8 +1,8 @@
 """
 Pydantic models for Web API
 """
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, Union
 from datetime import datetime
 import uuid
 
@@ -87,12 +87,17 @@ class ServicesListResponse(BaseModel):
 
 class ScheduleItem(BaseModel):
     """Schedule for a day"""
-    day_of_week: int  # 1-7 (Monday-Sunday)
-    start_time: str  # HH:MM:SS
-    end_time: str  # HH:MM:SS
+    day_of_week: int
     is_working_day: bool
-    break_start_time: Optional[str] = None
-    break_end_time: Optional[str] = None
+
+    # Optional time fields - use Any to allow None
+    start_time: Union[str, None] = None
+    end_time: Union[str, None] = None
+    break_start_time: Union[str, None] = None
+    break_end_time: Union[str, None] = None
+
+    class Config:
+        populate_by_name = True
 
 
 class ScheduleUpdate(BaseModel):

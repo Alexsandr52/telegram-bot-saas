@@ -96,6 +96,9 @@ async def update_schedule(
     db_instance = get_db()
 
     try:
+        logger.info(f"Updating schedule for bot {bot_id}")
+        logger.info(f"Received schedule data: {schedule_data.model_dump()}")
+
         master_id = await get_master_id_from_token(token, db_instance)
 
         # Verify ownership
@@ -109,6 +112,11 @@ async def update_schedule(
 
         # Update each day's schedule
         for schedule_item in schedule_data.schedules:
+            logger.info(f"Processing day {schedule_item.day_of_week}: "
+                       f"start_time={schedule_item.start_time}, "
+                       f"end_time={schedule_item.end_time}, "
+                       f"is_working_day={schedule_item.is_working_day}")
+
             await schedule_repo.set_schedule(
                 bot_id=uuid.UUID(bot_id),
                 day_of_week=schedule_item.day_of_week,
@@ -126,8 +134,8 @@ async def update_schedule(
             schedules=[
                 ScheduleItem(
                     day_of_week=s['day_of_week'],
-                    start_time=str(s['start_time']),
-                    end_time=str(s['end_time']),
+                    start_time=str(s['start_time']) if s.get('start_time') else None,
+                    end_time=str(s['end_time']) if s.get('end_time') else None,
                     is_working_day=s['is_working_day'],
                     break_start_time=str(s['break_start_time']) if s.get('break_start_time') else None,
                     break_end_time=str(s['break_end_time']) if s.get('break_end_time') else None

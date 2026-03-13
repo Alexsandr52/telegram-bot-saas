@@ -3,8 +3,9 @@ Services Handler for Platform Bot
 Handles CRUD operations for bot services
 """
 import re
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery, Message
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from loguru import logger
@@ -196,10 +197,14 @@ async def process_service_duration(message: Message, state: FSMContext) -> None:
 
 @router.message(ServiceStates.waiting_for_description)
 async def process_service_description(message: Message, state: FSMContext) -> None:
-    """Process service description"""
-    description = message.text.strip() if message.text else None
+    """Process service description or skip it"""
+    # Check if this is a /skip command
+    is_skip = message.text == "/skip"
 
-    await state.update_data(description=description)
+    description = None if is_skip else (message.text.strip() if message.text else None)
+
+    if not is_skip:
+        await state.update_data(description=description)
 
     # Get all data
     data = await state.get_data()

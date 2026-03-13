@@ -181,6 +181,22 @@ class ConfigManager:
                 for cmd in settings_dict.get('custom_commands', [])
                 if cmd.get('enabled', True)
             ]
+        else:
+            # Add default custom commands if not configured
+            custom_commands = [
+                CustomCommand(
+                    command="catalog",
+                    description="Услуги и запись",
+                    handler_type="catalog",
+                    enabled=True
+                ),
+                CustomCommand(
+                    command="about",
+                    description="О нас",
+                    handler_type="about",
+                    enabled=True
+                )
+            ]
 
         # Create config
         self._config = BotConfig(

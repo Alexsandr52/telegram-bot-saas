@@ -5,7 +5,7 @@ Handles bot token registration and container creation
 import re
 import httpx
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -84,7 +84,6 @@ async def show_my_bots(callback: CallbackQuery) -> None:
 
             keyboard = get_main_menu_keyboard()
             # Add button to start adding bot
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             keyboard.inline_keyboard.insert(0, [
                 InlineKeyboardButton(text="➕ Добавить бота", callback_data="start_add_bot")
             ])
@@ -355,22 +354,33 @@ async def bot_manage_schedule(callback: CallbackQuery) -> None:
     """Manage bot schedule"""
     bot_id = callback.data.split(":")[1]
 
-    # Navigate to schedule management for this bot
-    # For now, just show a message
+    # Show schedule menu with bot-specific actions
     text = (
         "📅 *Управление расписанием*\n\n"
-        f"Бот ID: {bot_id[:8]}...\n\n"
         "Выберите действие:"
     )
 
-    from src.keyboards import get_schedule_menu_keyboard
 
-    # Get the keyboard and modify the back button
-    keyboard = get_schedule_menu_keyboard()
-    # Update back button to return to bot menu
-    keyboard.inline_keyboard[-1] = [
-        InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")
-    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="📊 Просмотр расписания",
+                callback_data=f"view_bot_schedule:{bot_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🕐 Установить рабочие часы",
+                callback_data=f"set_bot_schedule:{bot_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад к боту",
+                callback_data=f"bot_menu:{bot_id}"
+            )
+        ]
+    ])
 
     await callback.message.edit_text(
         text,
@@ -392,7 +402,6 @@ async def bot_view_appointments(callback: CallbackQuery) -> None:
         "Функция в разработке 🔨"
     )
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
@@ -419,7 +428,6 @@ async def bot_view_clients(callback: CallbackQuery) -> None:
         "Функция в разработке 🔨"
     )
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
@@ -438,12 +446,22 @@ async def bot_view_clients(callback: CallbackQuery) -> None:
 async def bot_restart(callback: CallbackQuery) -> None:
     """Restart bot container"""
     bot_id = callback.data.split(":")[1]
+    settings = get_settings()
 
     await callback.answer("🔄 Перезапуск бота...", show_alert=True)
 
-    # TODO: Call Factory Service to restart container
-    # async with httpx.AsyncClient() as client:
-    #     await client.post(f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/restart")
+    try:
+        # Call Factory Service to restart container
+        async with httpx.AsyncClient(timeout=settings.FACTORY_SERVICE_TIMEOUT) as client:
+            response = await client.post(
+                f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/restart"
+            )
+            response.raise_for_status()
+            logger.info(f"Bot {bot_id} restarted successfully")
+    except Exception as e:
+        logger.error(f"Error restarting bot {bot_id}: {e}")
+        await callback.answer(f"❌ Ошибка перезапуска: {str(e)}", show_alert=True)
+        return
 
     text = (
         "✅ *Бот перезапускается*\n\n"
@@ -451,7 +469,6 @@ async def bot_restart(callback: CallbackQuery) -> None:
         "Вы получите уведомление когда бот будет снова доступен."
     )
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
@@ -490,15 +507,22 @@ async def bot_stop(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("bot_services:"))
 async def bot_manage_services(callback: CallbackQuery) -> None:
     """Manage bot services"""
-    from src.utils.repositories import get_bot_repo
+    from src.utils.repositories import get_bot_repo, get_service_repo
 
     bot_repo = get_bot_repo()
+    service_repo = get_service_repo()
 
     bot_id = callback.data.split(":")[1]
 
     try:
+        # Verify bot exists
+        bot = await bot_repo.get_bot_by_id(bot_id)
+        if not bot:
+            await callback.answer("❌ Бот не найден", show_alert=True)
+            return
+
         # Get bot services
-        services = await bot_repo.get_bot_services(bot_id)
+        services = await service_repo.get_bot_services(bot_id)
 
         if not services:
             text = "📝 *Услуги*\n\nУ вас пока нет услуг."
@@ -524,10 +548,20 @@ async def bot_manage_services(callback: CallbackQuery) -> None:
 async def confirm_stop_bot(callback: CallbackQuery) -> None:
     """Confirm bot stop"""
     bot_id = callback.data.split(":")[2]
+    settings = get_settings()
 
-    # TODO: Call Factory Service to stop container
-    # async with httpx.AsyncClient() as client:
-    #     await client.post(f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/stop")
+    try:
+        # Call Factory Service to stop container
+        async with httpx.AsyncClient(timeout=settings.FACTORY_SERVICE_TIMEOUT) as client:
+            response = await client.post(
+                f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/stop"
+            )
+            response.raise_for_status()
+            logger.info(f"Bot {bot_id} stopped successfully")
+    except Exception as e:
+        logger.error(f"Error stopping bot {bot_id}: {e}")
+        await callback.answer(f"❌ Ошибка остановки: {str(e)}", show_alert=True)
+        return
 
     text = (
         "✅ *Бот остановлен*\n\n"
@@ -535,7 +569,6 @@ async def confirm_stop_bot(callback: CallbackQuery) -> None:
         "Нажмите *Запустить* чтобы снова активировать бота."
     )
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -559,10 +592,22 @@ async def confirm_stop_bot(callback: CallbackQuery) -> None:
 async def bot_start(callback: CallbackQuery) -> None:
     """Start bot container"""
     bot_id = callback.data.split(":")[1]
+    settings = get_settings()
 
-    # TODO: Call Factory Service to start container
-    # async with httpx.AsyncClient() as client:
-    #     await client.post(f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/start")
+    await callback.answer("▶️ Запуск бота...", show_alert=True)
+
+    try:
+        # Call Factory Service to start container
+        async with httpx.AsyncClient(timeout=settings.FACTORY_SERVICE_TIMEOUT) as client:
+            response = await client.post(
+                f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/start"
+            )
+            response.raise_for_status()
+            logger.info(f"Bot {bot_id} started successfully")
+    except Exception as e:
+        logger.error(f"Error starting bot {bot_id}: {e}")
+        await callback.answer(f"❌ Ошибка запуска: {str(e)}", show_alert=True)
+        return
 
     text = (
         "✅ *Бот запускается*\n\n"
@@ -570,7 +615,6 @@ async def bot_start(callback: CallbackQuery) -> None:
         "Бот скоро начнет принимать записи."
     )
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]

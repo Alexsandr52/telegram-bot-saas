@@ -79,8 +79,10 @@ class DockerManager:
                 "--label", f"bot_id={bot_id}",
                 "--label", "service=telegram-bot",
                 "--label", "managed_by=factory-service",
+                "--label", f"webhook_path=/webhook/{bot_id}",
                 "--restart", "unless-stopped",
                 "--network", os.getenv("DOCKER_NETWORK", "bot_saas_network"),
+                "-p", f"8080",  # Expose webhook port
             ]
 
             # Add environment variables

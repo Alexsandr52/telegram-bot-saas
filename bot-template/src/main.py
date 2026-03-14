@@ -32,6 +32,11 @@ from handlers import client_menu, services, booking, profile
 BOT_ID = os.getenv("BOT_ID")  # Bot UUID from database
 BOT_TOKEN = os.getenv("BOT_TOKEN")  # Bot token (decrypted)
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@database:5432/bot_saas")
+USE_WEBHOOK = os.getenv("USE_WEBHOOK", "0") == "1"
+WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", f"/webhook/{BOT_ID}")
+WEBHOOK_SECRET_TOKEN = os.getenv("WEBHOOK_SECRET_TOKEN", None)
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
+WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8080"))
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable is required")
@@ -130,11 +135,41 @@ async def main() -> None:
     import asyncio
     reloader_task = asyncio.create_task(config_reloader())
 
-    # Start polling
-    logger.info("Starting polling mode...")
-    try:
-        await dp.start_polling(bot)
-    finally:
+    # Start polling or webhook
+    if USE_WEBHOOK:
+        logger.info(f"Starting webhook mode on {WEBHOOK_HOST}:{WEBHOOK_PORT}{WEBHOOK_PATH}...")
+        try:
+            await dp.start_webhook(
+                bot=bot,
+                webhook_path=WEBHOOK_PATH,
+                host=WEBHOOK_HOST,
+                port=WEBHOOK_PORT,
+                secret_token=WEBHOOK_SECRET_TOKEN
+            )
+        finally:
+            # Cleanup
+            reloader_task.cancel()
+            config_manager = get_config_manager()
+            db = get_database()
+
+            if config_manager:
+                await config_manager.close()
+            if db:
+                await db.close()
+    else:
+        logger.info("Starting polling mode...")
+        try:
+            await dp.start_polling(bot)
+        finally:
+            # Cleanup
+            reloader_task.cancel()
+            config_manager = get_config_manager()
+            db = get_database()
+
+            if config_manager:
+                await config_manager.close()
+            if db:
+                await db.close()
         # Cleanup
         reloader_task.cancel()
         config_manager = get_config_manager()

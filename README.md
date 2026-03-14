@@ -14,10 +14,11 @@
 3. [[#База данных]]
 4. [[#Структура проекта]]
 5. [[#Сервисы и их взаимодействие]]
-6. [[#План реализации]]
-7. [[#Развёртывание]]
-8. [[#Безопасность]]
-9. [[#Чек-листы]]
+6. [[#Webhook-поддержка]] — NEW!
+7. [[#План реализации]]
+8. [[#Развёртывание]]
+9. [[#Безопасность]]
+10. [[#Чек-листы]]
 
 ---
 
@@ -215,6 +216,11 @@ telegram-bot-saas/
 ├── 📄 docker-compose.prod.yml         # Продакшен конфигурация
 ├── 📄 .env.example                    # Шаблон переменных окружения
 ├── 📄 README.md                       # Документация
+├── 📄 WEBHOOK_SETUP.md               # Webhook настройка (ngrok + prod)
+├── 📂 scripts/                       # Утилиты для webhook
+│   ├── 📄 setup-ngrok.sh             # Автонастройка ngrok
+│   ├── 📄 set-bot-webhook.py         # Управление webhook бота
+│   └── 📄 update-all-webhooks.py      # Обновление webhook всех ботов
 │
 ├── 📂 platform-bot/                   # Главный бот для мастеров
 │   ├── 📄 Dockerfile
@@ -296,8 +302,9 @@ telegram-bot-saas/
 │   └── 📂 alerts/
 │
 └── 📂 nginx/                          # Шлюз
-    ├── 📄 nginx.conf
-    └── 📂 ssl/
+    ├── 📄 nginx.conf                  # Базовая конфигурация
+    ├── 📄 nginx-webhook.conf          # Конфигурация с webhook
+    └── 📂 ssl/                       # SSL сертификаты
 ```
 
 ---
@@ -356,6 +363,142 @@ await redis.lpush('notifications:queue', json.dumps({
 | `/api/v1/billing/subscribe/` | POST | Оформить подписку |
 | `/api/v1/billing/webhook/` | POST | Вебхук от платёжной системы |
 | `/api/v1/notifications/schedule/` | POST | Запланировать уведомление |
+
+---
+
+## 🔄 Webhook-поддержка
+
+### Обзор
+Система поддерживает два режима работы ботов:
+- **Webhook** - для продакшена (мгновенное получение сообщений)
+- **Long-polling** - для локальной разработки (опрос Telegram API)
+
+### Форматы URL
+
+#### Локальная разработка (ngrok)
+```
+https://{random_subdomain}.ngrok.io/webhook/{bot_id}
+```
+Пример: `https://abc123xyz.ngrok.io/webhook/74702bd7-8a8c-4b9e-94d6-713059abaf6e`
+
+#### Продакшен (реальный домен)
+```
+https://{your_domain}/webhook/{bot_id}
+```
+Пример: `https://api.yourdomain.com/webhook/74702bd7-8a8c-4b9e-94d6-713059abaf6e`
+
+### Скрипты для управления
+
+| Скрипт | Описание |
+|---------|----------|
+| `scripts/setup-ngrok.sh` | Автоматическая настройка ngrok туннеля |
+| `scripts/set-bot-webhook.py` | Установка/удаление webhook для одного бота |
+| `scripts/update-all-webhooks.py` | Обновление webhook для всех ботов сразу |
+
+### Быстрый старт с ngrok
+
+```bash
+# 1. Настроить переменные окружения
+echo "NGROK_ENABLED=true" >> .env
+
+# 2. Запустить ngrok
+./scripts/setup-ngrok.sh
+# Скрипт покажет: https://abc123.ngrok.io
+
+# 3. Обновить webhook для всех ботов
+export NGROK_WEBHOOK_URL=https://abc123.ngrok.io
+python3 scripts/update-all-webhooks.py
+
+# 4. Проверить статус webhook
+python3 scripts/set-bot-webhook.py {BOT_TOKEN} get
+```
+
+### Переход на продакшен
+
+```bash
+# 1. Настроить DNS
+# A запись: yourdomain.com → YOUR_SERVER_IP
+
+# 2. Получить SSL сертификат
+sudo certbot certonly --standalone -d api.yourdomain.com
+
+# 3. Скопировать сертификаты
+sudo cp /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem nginx/ssl/
+sudo cp /etc/letsencrypt/live/api.yourdomain.com/privkey.pem nginx/ssl/
+
+# 4. Обновить .env
+NGROK_ENABLED=false
+SERVER_DOMAIN=api.yourdomain.com
+WEBHOOK_BASE_URL=https://api.yourdomain.com
+
+# 5. Обновить webhook для всех ботов
+python3 scripts/update-all-webhooks.py
+
+# 6. Перезапустить nginx
+docker-compose restart nginx
+```
+
+### Nginx конфигурация
+
+Файл: `nginx/nginx-webhook.conf`
+
+```nginx
+location /webhook/ {
+    # Проксирование webhook запросов к ботам
+    proxy_pass http://bot_webhooks;
+    proxy_set_header X-Telegram-Bot-Id $bot_id;
+
+    # Увеличенный таймаут для Telegram API
+    proxy_read_timeout 120s;
+}
+```
+
+### Безопасность webhook
+
+#### Секретный токен
+```bash
+# Установка webhook с секретным токеном
+python3 scripts/set-bot-webhook.py \
+    {BOT_TOKEN} \
+    set \
+    --webhook-url {WEBHOOK_URL} \
+    --secret-token "random_secret_string"
+```
+
+#### Валидация в боте
+```python
+# Bot template main.py
+WEBHOOK_SECRET_TOKEN = os.getenv("WEBHOOK_SECRET_TOKEN")
+
+if WEBHOOK_SECRET_TOKEN:
+    # aiogram автоматически валидирует секретный токен
+    ...
+```
+
+### Мониторинг webhook
+
+```bash
+# Логи nginx (входящие webhook запросы)
+docker logs bot_saas_nginx | grep "POST /webhook/"
+
+# Логи бота (обработка webhook)
+docker logs bot_74702bd7 -f
+
+# Статус webhook через Telegram API
+curl https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo
+```
+
+### Troubleshooting
+
+| Проблема | Решение |
+|----------|----------|
+| Webhook не работает | Проверьте что ngrok запущен и URL доступен |
+| 404 на webhook | Убедитесь что nginx использует `nginx-webhook.conf` |
+| 500 на webhook | Проверьте логи бота, может быть проблема с БД |
+| Ngrok URL меняется | Обновите webhook или используйте платный ngrok план |
+| SSL ошибка | Проверьте что сертификаты корректные и не просрочены |
+
+**Подробнее:** См. `WEBHOOK_SETUP.md` для полной документации.
 
 ---
 
@@ -555,7 +698,8 @@ async def webhook(
 - [ ] Мастер отправил токен в PlatformBot
 - [ ] Токен зашифрован и сохранён в БД
 - [ ] Factory Service создал контейнер из шаблона
-- [ ] Вебхук установлен на контейнер
+- [ ] Webhook установлен (ngrok или продакшен домен)
+- [ ] Webhook URL проверен: `python3 scripts/set-bot-webhook.py {token} get`
 - [ ] Конфиг загружен из БД (услуги, график)
 - [ ] Бот ответил на /start
 - [ ] Мастер получил уведомление об успехе
@@ -634,13 +778,18 @@ docker-compose restart factory-service
 docker-compose exec platform-bot bash
 
 # Просмотр запущенных контейнеров ботов
-docker ps --filter "label=bot_saas.type=master_bot"
+docker ps --filter "label=service=telegram-bot"
 
 # Очистка старых образов
 docker image prune -a
 
 # Бэкап БД
 docker-compose exec database pg_dump -U postgres bot_saas > backup.sql
+
+# Webhook команды
+python3 scripts/set-bot-webhook.py {TOKEN} get              # Проверить webhook
+python3 scripts/set-bot-webhook.py {TOKEN} delete           # Удалить webhook
+python3 scripts/update-all-webhooks.py                      # Обновить webhook всех ботов
 ```
 
 ### Ссылки на документацию
@@ -650,6 +799,8 @@ docker-compose exec database pg_dump -U postgres bot_saas > backup.sql
 - [Docker SDK for Python](https://docker-py.readthedocs.io/)
 - [YooKassa API](https://yookassa.ru/developers/api)
 - [Telegram Bot API](https://core.telegram.org/bots/api)
+- [Webhook Setup Guide](./WEBHOOK_SETUP.md) - Подробная документация по webhook
+- [MVP Checklist](./MVP_CHECKLIST.md) - Чек-лист готовности MVP
 
 ---
 

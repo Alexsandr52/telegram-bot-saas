@@ -540,19 +540,37 @@ class BotRepository:
         Returns:
             Bot ID (UUID)
         """
+        # Get master's telegram_id for notifications
+        master = await self.db.fetchrow(
+            "SELECT telegram_id FROM masters WHERE id = $1",
+            master_id
+        )
+        master_telegram_id = master['telegram_id'] if master else None
+
         query = """
-            INSERT INTO bots (master_id, bot_token, bot_username, bot_name, container_status)
-            VALUES ($1, $2, $3, $4, 'creating')
+            INSERT INTO bots (master_id, bot_token, bot_username, bot_name, container_status, master_telegram_id)
+            VALUES ($1, $2, $3, $4, 'creating', $5)
             RETURNING id
         """
-        bot_id = await self.db.fetchval(query, master_id, bot_token, bot_username, bot_name)
+        bot_id = await self.db.fetchval(query, master_id, bot_token, bot_username, bot_name, master_telegram_id)
         logger.info(f"Bot created: {bot_id} (@{bot_username})")
         return bot_id
 
     async def get_bot_by_id(self, bot_id: uuid.UUID) -> Optional[Dict]:
         """Get bot by ID"""
         query = """
-            SELECT id, master_id, bot_username, bot_name, business_name,
+            SELECT id, master_id, master_telegram_id, bot_username, bot_name, business_name,
+                   container_status, container_id, is_active, created_at
+            FROM bots
+            WHERE id = $1
+        """
+        row = await self.db.fetchrow(query, bot_id)
+        return dict(row) if row else None
+
+    async def get_bot_with_token(self, bot_id: uuid.UUID) -> Optional[Dict]:
+        """Get bot by ID including encrypted token"""
+        query = """
+            SELECT id, master_id, master_telegram_id, bot_token, bot_username, bot_name, business_name,
                    container_status, container_id, is_active, created_at
             FROM bots
             WHERE id = $1
@@ -563,7 +581,7 @@ class BotRepository:
     async def get_bot_by_username(self, bot_username: str) -> Optional[Dict]:
         """Get bot by username"""
         query = """
-            SELECT id, master_id, bot_username, bot_name, business_name,
+            SELECT id, master_id, master_telegram_id, bot_username, bot_name, business_name,
                    container_status, container_id, is_active, created_at
             FROM bots
             WHERE bot_username = $1
@@ -574,7 +592,7 @@ class BotRepository:
     async def get_master_bots(self, master_id: uuid.UUID) -> List[Dict]:
         """Get all bots for a master"""
         query = """
-            SELECT id, bot_username, bot_name, business_name,
+            SELECT id, master_telegram_id, bot_username, bot_name, business_name,
                    container_status, is_active, created_at
             FROM bots
             WHERE master_id = $1
@@ -757,6 +775,55 @@ class ScheduleRepository:
         """
         await self.db.execute(query, bot_id, day_of_week)
         logger.info(f"Day {day_of_week} marked as unavailable for bot {bot_id}")
+
+    async def add_schedule_exception(
+        self,
+        bot_id: uuid.UUID,
+        exception_date: datetime,
+        reason: Optional[str] = None
+    ) -> uuid.UUID:
+        """Add a schedule exception (e.g., vacation, holiday)"""
+        from datetime import time
+
+        query = """
+            INSERT INTO schedule_exceptions (bot_id, date, is_working_day, reason)
+            VALUES ($1, $2, false, $3)
+            ON CONFLICT (bot_id, date)
+            DO UPDATE SET reason = EXCLUDED.reason, updated_at = NOW()
+            RETURNING id
+        """
+        exception_id = await self.db.fetchval(query, bot_id, exception_date, reason)
+        logger.info(f"Schedule exception added for bot {bot_id} on {exception_date}")
+        return exception_id
+
+    async def get_schedule_exceptions(
+        self,
+        bot_id: uuid.UUID,
+        limit: int = 50
+    ) -> List[Dict]:
+        """Get all schedule exceptions for a bot"""
+        query = """
+            SELECT id, date, is_working_day, reason, created_at
+            FROM schedule_exceptions
+            WHERE bot_id = $1
+            ORDER BY date DESC
+            LIMIT $2
+        """
+        rows = await self.db.fetch(query, bot_id, limit)
+        return [dict(row) for row in rows]
+
+    async def delete_schedule_exception(
+        self,
+        bot_id: uuid.UUID,
+        exception_date: datetime
+    ) -> None:
+        """Delete a schedule exception"""
+        query = """
+            DELETE FROM schedule_exceptions
+            WHERE bot_id = $1 AND date = $2
+        """
+        await self.db.execute(query, bot_id, exception_date)
+        logger.info(f"Schedule exception deleted for bot {bot_id} on {exception_date}")
 
 
 class SessionRepository:

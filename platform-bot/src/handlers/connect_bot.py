@@ -393,81 +393,226 @@ async def bot_manage_schedule(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("bot_appointments:"))
 async def bot_view_appointments(callback: CallbackQuery) -> None:
     """View bot appointments"""
+    from src.utils.repositories import get_bot_repo
+
     bot_id = callback.data.split(":")[1]
+    bot_repo = get_bot_repo()
 
-    text = (
-        "📋 *Записи клиентов*\n\n"
-        f"Бот ID: {bot_id[:8]}...\n\n"
-        "_Загрузка записей..._\n\n"
-        "Функция в разработке 🔨"
-    )
+    try:
+        # Get bot info
+        bot = await bot_repo.get_bot_by_id(bot_id)
+        if not bot:
+            await callback.answer("❌ Бот не найден", show_alert=True)
+            return
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
-        ]
-    )
+        # Get appointments from database
+        from src.utils.db import AppointmentRepository
+        appt_repo = AppointmentRepository(bot_repo.db)
+        appointments = await appt_repo.get_bot_appointments(bot_id, limit=20)
 
-    await callback.message.edit_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=keyboard
-    )
-    await callback.answer()
+        if not appointments:
+            text = (
+                "📋 *Записи клиентов*\n\n"
+                f"🤖 {bot.get('bot_name') or bot.get('bot_username')}\n\n"
+                "_Пока нет записей_"
+            )
+        else:
+            # Count by status
+            status_counts = {}
+            for appt in appointments:
+                status = appt.get('status', 'unknown')
+                status_counts[status] = status_counts.get(status, 0) + 1
+
+            status_emoji = {
+                'pending': '⏳',
+                'confirmed': '✅',
+                'completed': '✅',
+                'cancelled': '❌'
+            }
+
+            text = (
+                f"📋 *Записи клиентов*\n\n"
+                f"🤖 {bot.get('bot_name') or bot.get('bot_username')}\n\n"
+                f"Всего: {len(appointments)}\n\n"
+            )
+
+            # Show last 5 appointments
+            text += "*Последние записи:*\n\n"
+            for appt in appointments[:5]:
+                from datetime import datetime
+                appt_time = appt.get('start_time')
+                if isinstance(appt_time, str):
+                    appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00'))
+
+                time_str = appt_time.strftime('%d.%m %H:%M') if appt_time else '---'
+                client_name = appt.get('client_first_name', 'Клиент')
+                service_name = appt.get('service_name', 'Услуга')
+                status = appt.get('status', 'pending')
+                emoji = status_emoji.get(status, '❓')
+
+                text += f"{emoji} {time_str} - {client_name}\n"
+                text += f"   {service_name}\n\n"
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
+            ]
+        )
+
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error loading appointments: {e}")
+        await callback.answer("❌ Ошибка загрузки записей", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("bot_clients:"))
 async def bot_view_clients(callback: CallbackQuery) -> None:
     """View bot clients"""
+    from src.utils.repositories import get_bot_repo
+
     bot_id = callback.data.split(":")[1]
+    bot_repo = get_bot_repo()
 
-    text = (
-        "👥 *Клиенты*\n\n"
-        f"Бот ID: {bot_id[:8]}...\n\n"
-        "_Загрузка клиентов..._\n\n"
-        "Функция в разработке 🔨"
-    )
+    try:
+        # Get bot info
+        bot = await bot_repo.get_bot_by_id(bot_id)
+        if not bot:
+            await callback.answer("❌ Бот не найден", show_alert=True)
+            return
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
-        ]
-    )
+        # Get appointments to extract unique clients
+        from src.utils.db import AppointmentRepository
+        appt_repo = AppointmentRepository(bot_repo.db)
+        appointments = await appt_repo.get_bot_appointments(bot_id, limit=100)
 
-    await callback.message.edit_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=keyboard
-    )
-    await callback.answer()
+        if not appointments:
+            text = (
+                "👥 *Клиенты*\n\n"
+                f"🤖 {bot.get('bot_name') or bot.get('bot_username')}\n\n"
+                "_Пока нет клиентов_"
+            )
+        else:
+            # Extract unique clients
+            unique_clients = {}
+            for appt in appointments:
+                client_id = appt.get('client_id')
+                if client_id and client_id not in unique_clients:
+                    unique_clients[client_id] = {
+                        'first_name': appt.get('client_first_name'),
+                        'last_name': appt.get('client_last_name'),
+                        'phone': appt.get('client_phone'),
+                        'telegram_id': appt.get('client_telegram_id'),
+                        'visits': 1
+                    }
+                elif client_id in unique_clients:
+                    unique_clients[client_id]['visits'] += 1
+
+            # Sort by visits
+            clients_list = sorted(unique_clients.values(), key=lambda x: x['visits'], reverse=True)
+
+            text = (
+                f"👥 *Клиенты*\n\n"
+                f"🤖 {bot.get('bot_name') or bot.get('bot_username')}\n\n"
+                f"Всего клиентов: {len(clients_list)}\n\n"
+            )
+
+            # Show top 10 clients
+            text += "*Топ клиентов:*\n\n"
+            for client in clients_list[:10]:
+                name = f"{client.get('first_name', '')} {client.get('last_name', '')}".strip() or 'Клиент'
+                phone = client.get('phone', 'Нет телефона')
+                visits = client.get('visits', 0)
+
+                text += f"👤 {name}\n"
+                text += f"   📱 {phone}\n"
+                text += f"   📊 Записей: {visits}\n\n"
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад к боту", callback_data=f"bot_menu:{bot_id}")]
+            ]
+        )
+
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error loading clients: {e}")
+        await callback.answer("❌ Ошибка загрузки клиентов", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("bot_restart:"))
 async def bot_restart(callback: CallbackQuery) -> None:
-    """Restart bot container"""
+    """Restart bot container or recreate if missing"""
+    from src.utils.repositories import get_bot_repo
+
     bot_id = callback.data.split(":")[1]
     settings = get_settings()
+    bot_repo = get_bot_repo()
 
     await callback.answer("🔄 Перезапуск бота...", show_alert=True)
 
     try:
-        # Call Factory Service to restart container
+        # Try to restart the container first
         async with httpx.AsyncClient(timeout=settings.FACTORY_SERVICE_TIMEOUT) as client:
             response = await client.post(
                 f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/{bot_id}/restart"
             )
             response.raise_for_status()
             logger.info(f"Bot {bot_id} restarted successfully")
-    except Exception as e:
-        logger.error(f"Error restarting bot {bot_id}: {e}")
-        await callback.answer(f"❌ Ошибка перезапуска: {str(e)}", show_alert=True)
-        return
 
-    text = (
-        "✅ *Бот перезапускается*\n\n"
-        "Это может занять 30-60 секунд.\n\n"
-        "Вы получите уведомление когда бот будет снова доступен."
-    )
+        text = (
+            "✅ *Бот перезапускается*\n\n"
+            "Это может занять 30-60 секунд.\n\n"
+            "Вы получите уведомление когда бот будет снова доступен."
+        )
+
+    except Exception as e:
+        # Check if container is missing (404 or similar error)
+        error_str = str(e).lower()
+        if '404' in error_str or 'not found' in error_str:
+            logger.warning(f"Container for bot {bot_id} not found, attempting to recreate...")
+
+            # Get bot with encrypted token
+            bot = await bot_repo.get_bot_with_token(bot_id)
+            if not bot or not bot.get('bot_token'):
+                logger.error(f"Could not get bot token for recreation")
+                await callback.answer("❌ Ошибка: не удалось получить токен бота", show_alert=True)
+                return
+
+            # Recreate the container
+            container_info = await recreate_bot_container(bot_id, bot['bot_token'])
+            if container_info:
+                # Update database with new container info
+                await bot_repo.update_bot_container(
+                    bot_id,
+                    container_info.get('container_id'),
+                    container_info.get('status', 'creating')
+                )
+
+                text = (
+                    "🔧 *Контейнер бота пересоздается*\n\n"
+                    "Это может занять 1-2 минуты.\n\n"
+                    "Бот будет запущен с новыми настройками."
+                )
+            else:
+                logger.error(f"Failed to recreate container for bot {bot_id}")
+                await callback.answer("❌ Ошибка при создании контейнера", show_alert=True)
+                return
+        else:
+            logger.error(f"Error restarting bot {bot_id}: {e}")
+            await callback.answer(f"❌ Ошибка перезапуска: {str(e)}", show_alert=True)
+            return
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -630,6 +775,76 @@ async def bot_start(callback: CallbackQuery) -> None:
 
 
 # ============================================
+# Master Appointment Confirmation
+# ============================================
+
+@router.callback_query(F.data.startswith("master_confirm_"))
+async def master_confirm_appointment(callback: CallbackQuery) -> None:
+    """Master confirms appointment"""
+    from src.utils.repositories import get_bot_repo
+
+    appointment_id = callback.data.split("_")[2]
+    bot_repo = get_bot_repo()
+
+    try:
+        # Update appointment status
+        from src.utils.db import AppointmentRepository
+        appt_repo = AppointmentRepository(bot_repo.db)
+        await appt_repo.update_appointment_status(
+            appointment_id,
+            "confirmed"
+        )
+
+        await callback.answer("✅ Запись подтверждена!", show_alert=True)
+
+        # Update the message
+        await callback.message.edit_text(
+            "✅ *Запись подтверждена*\n\n"
+            "Клиент получит уведомление.",
+            parse_mode="Markdown"
+        )
+
+        logger.info(f"Master {callback.from_user.id} confirmed appointment {appointment_id}")
+
+    except Exception as e:
+        logger.error(f"Error confirming appointment: {e}")
+        await callback.answer("❌ Ошибка подтверждения", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("master_reject_"))
+async def master_reject_appointment(callback: CallbackQuery) -> None:
+    """Master rejects appointment"""
+    from src.utils.repositories import get_bot_repo
+
+    appointment_id = callback.data.split("_")[2]
+    bot_repo = get_bot_repo()
+
+    try:
+        # Update appointment status
+        from src.utils.db import AppointmentRepository
+        appt_repo = AppointmentRepository(bot_repo.db)
+        await appt_repo.update_appointment_status(
+            appointment_id,
+            "cancelled"
+        )
+
+        await callback.answer("❌ Запись отклонена!", show_alert=True)
+
+        # Update the message
+        await callback.message.edit_text(
+            "❌ *Запись отклонена*\n\n"
+            "Клиент получит уведомление.",
+            parse_mode="Markdown"
+        )
+
+        logger.info(f"Master {callback.from_user.id} rejected appointment {appointment_id}")
+
+    except Exception as e:
+        logger.error(f"Error rejecting appointment: {e}")
+        await callback.answer("❌ Ошибка отклонения", show_alert=True)
+
+
+# ============================================
 # Helper Functions
 # ============================================
 
@@ -700,3 +915,52 @@ async def trigger_bot_creation(bot_id: str, token: str) -> dict:
         except Exception as e:
             logger.error(f"Error calling Factory Service: {e}")
             return None
+
+
+async def recreate_bot_container(bot_id: str, encrypted_token: str) -> dict:
+    """
+    Recreate a bot container by decrypting the token and calling factory service
+
+    Args:
+        bot_id: Bot UUID
+        encrypted_token: Encrypted bot token from database
+
+    Returns:
+        Container info dict if successful, None otherwise
+    """
+    from src.utils.encryption import decrypt_token
+    from src.utils.config import get_settings
+
+    settings = get_settings()
+
+    try:
+        # Decrypt the token
+        token = decrypt_token(encrypted_token)
+        logger.info(f"Token decrypted for bot {bot_id}")
+
+        # Call factory service to create container
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.FACTORY_SERVICE_URL}/api/v1/factory/bots/",
+                json={
+                    "bot_id": bot_id,
+                    "bot_token": token,
+                    "bot_username": "",
+                },
+                timeout=30.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"Bot container recreated: {bot_id}")
+                return {
+                    "container_id": data.get("container_id"),
+                    "status": data.get("status")
+                }
+            else:
+                logger.error(f"Failed to recreate bot: {response.status_code} - {response.text}")
+                return None
+
+    except Exception as e:
+        logger.error(f"Error recreating bot container: {e}")
+        return None

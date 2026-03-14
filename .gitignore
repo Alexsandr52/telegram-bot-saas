@@ -1,2 +1,24 @@
+# Environment variables
 .env
+
+# Virtual environments
 /venv
+/venv*/
+__pycache__/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project documentation (local)
+PROJECT_DOCUMENTATION.md

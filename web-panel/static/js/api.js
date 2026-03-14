@@ -46,14 +46,14 @@ async function apiRequest(endpoint, options = {}) {
  */
 const AuthAPI = {
     async login(token) {
-        return apiRequest('/auth/login', {
+        return apiRequest('/api/v1/auth/login', {
             method: 'POST',
             body: JSON.stringify({ token })
         });
     },
 
     logout(token) {
-        return apiRequest(`/auth/logout?token=${token}`, {
+        return apiRequest(`/api/v1/auth/logout?token=${token}`, {
             method: 'POST'
         });
     }
@@ -64,11 +64,11 @@ const AuthAPI = {
  */
 const BotsAPI = {
     async getAll(token) {
-        return apiRequest(`/bots?token=${token}`);
+        return apiRequest(`/api/v1/bots?token=${token}`);
     },
 
     async getById(botId, token) {
-        return apiRequest(`/bots/${botId}?token=${token}`);
+        return apiRequest(`/api/v1/bots/${botId}?token=${token}`);
     }
 };
 
@@ -77,25 +77,25 @@ const BotsAPI = {
  */
 const ServicesAPI = {
     async getByBot(botId, token) {
-        return apiRequest(`/services/${botId}?token=${token}`);
+        return apiRequest(`/api/v1/services/${botId}?token=${token}`);
     },
 
     async create(botId, data, token) {
-        return apiRequest(`/services/${botId}?token=${token}`, {
+        return apiRequest(`/api/v1/services/${botId}?token=${token}`, {
             method: 'POST',
             body: JSON.stringify(data)
         });
     },
 
     async update(serviceId, data, token) {
-        return apiRequest(`/services/${serviceId}?token=${token}`, {
+        return apiRequest(`/api/v1/services/${serviceId}?token=${token}`, {
             method: 'PUT',
             body: JSON.stringify(data)
         });
     },
 
     async delete(serviceId, token) {
-        return apiRequest(`/services/${serviceId}?token=${token}`, {
+        return apiRequest(`/api/v1/services/${serviceId}?token=${token}`, {
             method: 'DELETE'
         });
     }
@@ -106,11 +106,11 @@ const ServicesAPI = {
  */
 const SchedulesAPI = {
     async getByBot(botId, token) {
-        return apiRequest(`/schedules/${botId}?token=${token}`);
+        return apiRequest(`/api/v1/schedules/${botId}?token=${token}`);
     },
 
     async update(botId, schedules, token) {
-        return apiRequest(`/schedules/${botId}?token=${token}`, {
+        return apiRequest(`/api/v1/schedules/${botId}?token=${token}`, {
             method: 'PUT',
             body: JSON.stringify({ schedules })
         });
@@ -122,7 +122,7 @@ const SchedulesAPI = {
  */
 const AppointmentsAPI = {
     async getByBot(botId, token, status = null, limit = 50, offset = 0) {
-        let url = `/appointments/${botId}?token=${token}&limit=${limit}&offset=${offset}`;
+        let url = `/api/v1/appointments/${botId}?token=${token}&limit=${limit}&offset=${offset}`;
         if (status) {
             url += `&status_filter=${status}`;
         }
@@ -130,7 +130,7 @@ const AppointmentsAPI = {
     },
 
     async updateStatus(appointmentId, status, token) {
-        return apiRequest(`/appointments/${appointmentId}/status?token=${token}`, {
+        return apiRequest(`/api/v1/appointments/${appointmentId}/status?token=${token}`, {
             method: 'PUT',
             body: JSON.stringify({ status })
         });

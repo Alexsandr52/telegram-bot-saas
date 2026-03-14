@@ -2,8 +2,9 @@
 Booking Handlers
 Handle time slot selection and appointment confirmation
 """
+import httpx
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 
@@ -14,6 +15,98 @@ from handlers.services import BookingStates
 
 
 router = Router(name="booking")
+
+
+async def notify_master_new_appointment(
+    appointment_id: str,
+    service_name: str,
+    start_time,
+    end_time,
+    price,
+    client: dict,
+    bot_token: str
+):
+    """Send notification to master about new appointment"""
+    try:
+        db = get_database()
+        logger.info(f"Attempting to notify master about appointment {appointment_id}, bot_id: {db.bot_id}")
+
+        # Get master_telegram_id from bots table
+        bot_info = await db.fetchrow(
+            "SELECT master_telegram_id FROM bots WHERE id = $1",
+            str(db.bot_id)
+        )
+
+        if not bot_info:
+            logger.error(f"Bot not found: bot_id={db.bot_id}")
+            return
+
+        if not bot_info['master_telegram_id']:
+            logger.error(f"master_telegram_id is NULL for bot {db.bot_id}")
+            return
+
+        master_telegram_id = bot_info['master_telegram_id']
+        logger.info(f"Found master_telegram_id: {master_telegram_id}")
+
+        # Format message
+        day_names = ['Понедельник', 'Вторник', 'Среду', 'Четверг', 'Пятницу', 'Субботу', 'Воскресенье']
+        date_str = start_time.strftime('%d.%m.%Y')
+        weekday = day_names[start_time.weekday()]
+        time_str = f"{start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}"
+
+        client_link = f"tg://user?id={client.get('telegram_id')}" if client.get('telegram_id') else None
+
+        message = (
+            f"🔔 *Новая запись!*\n\n"
+            f"🎉 *Услуга:* {service_name}\n"
+            f"👤 *Клиент:* {client.get('first_name', 'Клиент')} {client.get('last_name', '')}\n"
+            f"📅 *Дата:* {date_str} ({weekday})\n"
+            f"🕐 *Время:* {time_str}\n"
+            f"💰 *Цена:* {price}₽\n\n"
+        )
+
+        if client_link:
+            message += f"📱 [Связаться с клиентом]({client_link})\n\n"
+
+        message += f"ID: {appointment_id[:8]}..."
+
+        # Create inline keyboard for confirmation
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"master_confirm_{appointment_id}"),
+                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"master_reject_{appointment_id}")
+            ]
+        ])
+
+        # Add contact buttons if available
+        contact_row = []
+        if client_link:
+            contact_row.append(InlineKeyboardButton(text="👤 Связаться", url=client_link))
+        if client.get('username'):
+            contact_row.append(InlineKeyboardButton(text="💬 Чат", url=f"https://t.me/{client.get('username')}"))
+
+        if contact_row:
+            keyboard.inline_keyboard.append(contact_row)
+
+        # Send message via Telegram Bot API
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": master_telegram_id,
+            "text": message,
+            "parse_mode": "Markdown",
+            "reply_markup": keyboard.to_json()
+        }
+
+        logger.info(f"Sending notification to master {master_telegram_id}")
+        async with httpx.AsyncClient() as http_client:
+            response = await http_client.post(url, json=payload, timeout=10.0)
+            if response.status_code == 200:
+                logger.info(f"✅ Master notified about appointment {appointment_id}")
+            else:
+                logger.error(f"❌ Failed to notify master: {response.status_code} - {response.text}")
+
+    except Exception as e:
+        logger.exception(f"Error notifying master: {e}")
 
 
 @router.callback_query(F.data.startswith("slot_"), BookingStates.selecting_time)
@@ -130,6 +223,17 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext) -> None:
         )
 
         logger.info(f"Appointment {appointment_id} created for user {callback.from_user.id}")
+
+        # Notify master about new appointment
+        await notify_master_new_appointment(
+            appointment_id=appointment_id,
+            service_name=service['name'],
+            start_time=start_time,
+            end_time=end_time,
+            price=price,
+            client=client,
+            bot_token=config_manager.config.bot_token
+        )
 
     except Exception as e:
         logger.error(f"Error creating appointment: {e}")

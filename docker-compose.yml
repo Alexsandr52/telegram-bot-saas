@@ -208,6 +208,40 @@ services:
       - "3000:80"
 
   # ============================================
+  # Notification Service (Reminders & Alerts)
+  # ============================================
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: bot_saas_notification_service
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@database:5432/${POSTGRES_DB:-bot_saas}
+
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379/0
+      REDIS_ENABLED: ${REDIS_ENABLED:-true}
+
+      # Notification settings
+      NOTIFICATION_CHECK_INTERVAL: ${NOTIFICATION_CHECK_INTERVAL:-300}
+      NOTIFICATION_WORKER_CONCURRENCY: ${NOTIFICATION_WORKER_CONCURRENCY:-2}
+
+      # Retry settings
+      MAX_RETRY_ATTEMPTS: ${MAX_RETRY_ATTEMPTS:-3}
+      RETRY_DELAY_SECONDS: ${RETRY_DELAY_SECONDS:-300}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+    networks:
+      - bot_saas_network
+    depends_on:
+      - database
+      - redis
+
+  # ============================================
   # Nginx (API Gateway & Reverse Proxy)
   # ============================================
   nginx:
@@ -227,6 +261,7 @@ services:
       - factory-service
       - web-api
       - web-panel
+      - notification-service
 
 # ============================================
 # Networks

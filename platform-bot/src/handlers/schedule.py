@@ -428,18 +428,36 @@ async def process_exception_reason(message: Message, state: FSMContext) -> None:
 
     data = await state.get_data()
     date_obj = data.get('exception_date')
+    bot_id = data.get('bot_id')
 
-    # TODO: Save to database
-    # schedule_repo = get_schedule_repo()
-    # await schedule_repo.add_exception(...)
+    if not bot_id:
+        await message.answer("❌ Ошибка: бот не выбран. Начните заново.")
+        await state.clear()
+        return
 
-    await message.answer(
-        f"✅ *Исключение сохранено!*\n\n"
-        f"📅 Дата: {date_obj.strftime('%d.%m.%Y')}\n"
-        f"📝 Причина: {reason or 'Не указано'}\n\n"
-        f"_В этот день бот не будет принимать записи_",
-        parse_mode="Markdown",
-        reply_markup=create_back_button("manage_schedule")
-    )
+    try:
+        # Save to database
+        schedule_repo = get_schedule_repo()
+        await schedule_repo.add_schedule_exception(
+            bot_id=bot_id,
+            exception_date=date_obj,
+            reason=reason
+        )
 
-    await state.clear()
+        await message.answer(
+            f"✅ *Исключение сохранено!*\n\n"
+            f"📅 Дата: {date_obj.strftime('%d.%m.%Y')}\n"
+            f"📝 Причина: {reason or 'Не указано'}\n\n"
+            f"_В этот день бот не будет принимать записи_",
+            parse_mode="Markdown",
+            reply_markup=create_back_button("manage_schedule")
+        )
+
+        await state.clear()
+
+    except Exception as e:
+        logger.error(f"Error saving schedule exception: {e}")
+        await message.answer(
+            "❌ Ошибка при сохранении. Попробуйте позже."
+        )
+        await state.clear()

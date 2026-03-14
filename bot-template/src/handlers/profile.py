@@ -376,6 +376,13 @@ async def show_appointment_details(callback: CallbackQuery) -> None:
         start_time > datetime.now()
     )
 
+    # Build client contact link
+    client_contact = ""
+    telegram_id = appointment.get('telegram_id')
+    if telegram_id:
+        # Create tg:// link if telegram_id exists
+        client_contact = f"👤 *Клиент:* [tg://user?id={telegram_id}](tg://user?id={telegram_id})\n\n"
+
     text = (
         f"📋 *Детали записи*\n\n"
         f"🔹 *Услуга:* {appointment['service_name']}\n"
@@ -384,6 +391,7 @@ async def show_appointment_details(callback: CallbackQuery) -> None:
         f"⏱️ *Длительность:* {appointment['duration_minutes']} мин\n"
         f"💰 *Стоимость:* {appointment['price']}₽\n"
         f"📝 *Статус:* {status_emoji}\n\n"
+        f"{client_contact}"
     )
 
     await callback.message.edit_text(

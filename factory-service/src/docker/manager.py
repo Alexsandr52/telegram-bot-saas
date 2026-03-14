@@ -65,7 +65,8 @@ class DockerManager:
                 f"BOT_TOKEN={bot_token}",
                 f"DATABASE_URL={os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@database:5432/bot_saas')}",
                 f"USE_WEBHOOK={'1' if webhook_url else '0'}",
-                f"WEBHOOK_URL={webhook_url or ''}"
+                f"WEBHOOK_URL={webhook_url or ''}",
+                f"TZ=Europe/Moscow"
             ]
 
             # Get bot-template image

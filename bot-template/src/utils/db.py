@@ -188,7 +188,9 @@ class BotDatabase:
         duration = service['duration_minutes']
 
         # Get schedule for the day
-        weekday = date.weekday()  # 0 = Monday in Python
+        # Python: weekday() = 0 (Monday), isoweekday() = 1 (Monday)
+        # DB: day_of_week = 1 (Monday)
+        weekday = date.isoweekday()  # 1 = Monday (matches DB)
         schedule = await self.fetchrow(
             """
             SELECT start_time, end_time, is_working_day,
@@ -274,7 +276,7 @@ class BotDatabase:
             SELECT a.id, a.start_time, a.end_time, a.status, a.price,
                    a.comment, a.created_at,
                    s.name as service_name, s.duration_minutes,
-                   c.first_name, c.last_name, c.phone
+                   c.first_name, c.last_name, c.phone, c.telegram_id
             FROM appointments a
             JOIN services s ON s.id = a.service_id
             JOIN clients c ON c.id = a.client_id

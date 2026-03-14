@@ -122,6 +122,7 @@ async def show_statistics(callback: CallbackQuery) -> None:
     """Show user statistics"""
     telegram_id = callback.from_user.id
     master_repo = get_master_repo()
+    bot_repo = get_bot_repo()
 
     try:
         master = await master_repo.get_master_by_telegram_id(telegram_id)
@@ -129,14 +130,49 @@ async def show_statistics(callback: CallbackQuery) -> None:
             await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
-        # TODO: Implement actual statistics
+        # Get master's bots
+        bots = await bot_repo.get_master_bots(master['id'])
+
+        # Initialize counters
+        total_appointments = 0
+        total_clients = set()
+        total_revenue = 0
+        active_bots = 0
+
+        # Collect statistics from all bots
+        from src.utils.db import AppointmentRepository
+        for bot in bots:
+            if bot.get('is_active'):
+                active_bots += 1
+
+            appt_repo = AppointmentRepository(bot_repo.db)
+            appointments = await appt_repo.get_bot_appointments(bot['id'], limit=1000)
+
+            for appt in appointments:
+                total_appointments += 1
+                client_id = appt.get('client_id')
+                if client_id:
+                    total_clients.add(client_id)
+
+                # Count revenue from completed appointments
+                if appt.get('status') == 'completed':
+                    total_revenue += appt.get('price', 0)
+
+        # Get subscription info
+        from src.utils.db import SubscriptionRepository
+        sub_repo = SubscriptionRepository(bot_repo.db)
+        subscription = await sub_repo.get_active_subscription(master['id'])
+
+        sub_name = subscription.get('plan_name', 'Free') if subscription else 'Free'
+        sub_status = subscription.get('status', 'active') if subscription else 'active'
+
         stats_text = (
-            "📊 *Ваша статистика*\n\n"
-            f"🤖 Ботов: 0\n"
-            f"👥 Клиентов: 0\n"
-            f"📋 Записей: 0\n"
-            f"💳 Тариф: Free\n\n"
-            "_Более детальная статистика будет доступна после создания первого бота._"
+            f"📊 *Ваша статистика*\n\n"
+            f"🤖 Ботов: {len(bots)} (активных: {active_bots})\n"
+            f"👥 Уникальных клиентов: {len(total_clients)}\n"
+            f"📋 Всего записей: {total_appointments}\n"
+            f"💰 Заработано: {total_revenue:.0f} ₽\n\n"
+            f"💳 Тариф: {sub_name}\n"
         )
 
         await callback.message.edit_text(
@@ -154,17 +190,44 @@ async def show_statistics(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "settings")
 async def show_settings(callback: CallbackQuery) -> None:
     """Show settings menu"""
-    settings_text = (
-        "⚙️ *Настройки*\n\n"
-        "Здесь вы можете настроить профиль и уведомления.\n\n"
-        "Функция в разработке 🔨"
-    )
+    telegram_id = callback.from_user.id
+    master_repo = get_master_repo()
 
-    from ..keyboards import get_settings_keyboard
+    try:
+        master = await master_repo.get_master_by_telegram_id(telegram_id)
+        if not master:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
+            return
 
-    await callback.message.edit_text(
-        settings_text,
-        parse_mode="Markdown",
-        reply_markup=get_settings_keyboard()
-    )
-    await callback.answer()
+        # Get subscription info
+        from src.utils.db import SubscriptionRepository
+        sub_repo = SubscriptionRepository(master_repo.db)
+        subscription = await sub_repo.get_active_subscription(master['id'])
+
+        sub_name = subscription.get('plan_name', 'Free') if subscription else 'Free'
+        sub_status = subscription.get('status', 'active') if subscription else 'active'
+
+        settings_text = (
+            f"⚙️ *Настройки*\n\n"
+            f"👤 *Профиль*\n"
+            f"Имя: {master.get('full_name') or 'Не указано'}\n"
+            f"Username: @{master.get('username', 'Не указано')}\n"
+            f"Телефон: {master.get('phone', 'Не указан')}\n\n"
+            f"💳 *Подписка*\n"
+            f"Тариф: {sub_name}\n"
+            f"Статус: {sub_status}\n\n"
+            f"_Изменить профиль можно через меню управления._"
+        )
+
+        from ..keyboards import get_settings_keyboard
+
+        await callback.message.edit_text(
+            settings_text,
+            parse_mode="Markdown",
+            reply_markup=get_settings_keyboard()
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error showing settings: {e}")
+        await callback.answer("❌ Ошибка при загрузке настроек", show_alert=True)

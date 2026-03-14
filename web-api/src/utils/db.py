@@ -344,7 +344,7 @@ class AppointmentRepository(Repository):
         """Get appointments for a bot"""
         if status_filter:
             query = """
-                SELECT a.id, a.start_time, a.end_time, a.status, a.price,
+                SELECT a.id, a.bot_id, a.start_time, a.end_time, a.status, a.price,
                        c.first_name, c.last_name, c.phone, c.telegram_id,
                        s.name as service_name
                 FROM appointments a
@@ -357,7 +357,7 @@ class AppointmentRepository(Repository):
             rows = await self.db.fetch(query, bot_id, status_filter, limit, offset)
         else:
             query = """
-                SELECT a.id, a.start_time, a.end_time, a.status, a.price,
+                SELECT a.id, a.bot_id, a.start_time, a.end_time, a.status, a.price,
                        c.first_name, c.last_name, c.phone, c.telegram_id,
                        s.name as service_name
                 FROM appointments a
@@ -369,6 +369,20 @@ class AppointmentRepository(Repository):
             """
             rows = await self.db.fetch(query, bot_id, limit, offset)
         return [dict(row) for row in rows]
+
+    async def get_appointment_by_id(self, appointment_id: uuid.UUID) -> Optional[Dict]:
+        """Get appointment by ID"""
+        query = """
+            SELECT a.id, a.bot_id, a.start_time, a.end_time, a.status, a.price,
+                   c.first_name, c.last_name, c.phone, c.telegram_id,
+                   s.name as service_name
+            FROM appointments a
+            JOIN clients c ON c.id = a.client_id
+            JOIN services s ON s.id = a.service_id
+            WHERE a.id = $1
+        """
+        row = await self.db.fetchrow(query, appointment_id)
+        return dict(row) if row else None
 
     async def update_appointment_status(
         self,

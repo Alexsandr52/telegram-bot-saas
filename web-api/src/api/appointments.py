@@ -116,30 +116,46 @@ async def update_appointment_status(
         master_id = await get_master_id_from_token(token, db_instance)
 
         appointment_repo = AppointmentRepository(db_instance)
-        await appointment_repo.update_appointment_status(
-            uuid.UUID(appointment_id),
-            status_update.status
-        )
 
-        # Get updated appointment
-        appointments = await appointment_repo.get_bot_appointments(uuid.UUID(appointment_id), limit=1)
-        if not appointments:
+        # First get the appointment to verify it exists and belongs to master's bot
+        appt = await appointment_repo.get_appointment_by_id(uuid.UUID(appointment_id))
+        if not appt:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Appointment not found"
             )
 
-        appt = appointments[0]
+        # Verify bot ownership
+        if not await verify_bot_ownership(str(appt['bot_id']), master_id, db_instance):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+
+        # Update status
+        await appointment_repo.update_appointment_status(
+            uuid.UUID(appointment_id),
+            status_update.status
+        )
+
+        # Get updated appointment with client info
+        updated_appt = await appointment_repo.get_appointment_by_id(uuid.UUID(appointment_id))
+        if not updated_appt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Appointment not found after update"
+            )
+
         return AppointmentResponse(
-            id=str(appt['id']),
-            start_time=appt['start_time'],
-            end_time=appt['end_time'],
-            status=appt['status'],
-            price=float(appt['price']) if appt.get('price') else 0.0,
-            client_first_name=appt.get('first_name'),
-            client_last_name=appt.get('last_name'),
-            client_phone=appt.get('phone'),
-            service_name=appt['service_name']
+            id=str(updated_appt['id']),
+            start_time=updated_appt['start_time'],
+            end_time=updated_appt['end_time'],
+            status=updated_appt['status'],
+            price=float(updated_appt['price']) if updated_appt.get('price') else 0.0,
+            client_first_name=updated_appt.get('first_name'),
+            client_last_name=updated_appt.get('last_name'),
+            client_phone=updated_appt.get('phone'),
+            service_name=updated_appt['service_name']
         )
 
     except HTTPException:

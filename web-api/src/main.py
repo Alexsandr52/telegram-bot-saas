@@ -12,8 +12,12 @@ import sys
 from src.utils.config import get_settings
 from src.utils.db import init_database, close_database
 
+# Add shared module path for error logging
+sys.path.insert(0, str(__file__).replace('src/main.py', 'shared'))
+from error_logging import init_error_logging, close_error_logging, log_exception, ErrorLevel, ErrorCategory
+
 # Import routers
-from src.api import auth, bots, services, schedules, appointments
+from src.api import auth, bots, services, schedules, appointments, analytics
 
 
 # ============================================
@@ -39,9 +43,13 @@ _db = None
 
 
 async def init_db():
-    """Initialize database connection"""
+    """Initialize database connection and error logging"""
     global _db
     _db = await init_database(settings.DATABASE_URL)
+
+    # Initialize error logging system
+    await init_error_logging(settings.DATABASE_URL)
+
     logger.info("Database initialized")
 
 
@@ -59,6 +67,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     await close_database()
+    await close_error_logging()
     logger.info("Web API shutting down...")
 
 
@@ -88,6 +97,7 @@ app.include_router(bots.router, prefix=settings.API_PREFIX)
 app.include_router(services.router, prefix=settings.API_PREFIX)
 app.include_router(schedules.router, prefix=settings.API_PREFIX)
 app.include_router(appointments.router, prefix=settings.API_PREFIX)
+app.include_router(analytics.router, prefix=settings.API_PREFIX)
 
 
 # ============================================

@@ -38,20 +38,41 @@ class Database:
         self.min_size = min_size
         self.max_size = max_size
         self.pool: Optional[asyncpg.Pool] = None
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 5
 
     async def connect(self) -> None:
-        """Create connection pool"""
-        if self.pool is None:
+        """Create connection pool with retry logic"""
+        if self.pool is not None:
+            return  # Already connected
+
+        self._reconnect_attempts = 0
+
+        while self._reconnect_attempts < self._max_reconnect_attempts:
             try:
                 self.pool = await asyncpg.create_pool(
                     self.dsn,
                     min_size=self.min_size,
                     max_size=self.max_size,
                     command_timeout=60,
+                    server_settings={'connect_timeout': 10}
                 )
-                logger.info("Database connection pool created")
+                logger.info(f"Database connection pool created (min={self.min_size}, max={self.max_size})")
+                return  # Success
+
+            except (asyncpg.PostgresConnectionError, asyncpg.PostgresError) as e:
+                self._reconnect_attempts += 1
+                wait_time = 1 * (2 ** (self._reconnect_attempts - 1))  # Exponential backoff
+
+                if self._reconnect_attempts == self._max_reconnect_attempts:
+                    logger.error(f"Failed to create database pool after {self._max_reconnect_attempts} attempts: {e}")
+                    raise  # Re-raise the exception
+
+                logger.warning(f"Database connection failed (attempt {self._reconnect_attempts}/{self._max_reconnect_attempts}): {e}")
+                logger.info(f"Retrying in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
             except Exception as e:
-                logger.error(f"Failed to create database pool: {e}")
+                logger.error(f"Unexpected error creating database pool: {e}")
                 raise
 
     async def close(self) -> None:
@@ -64,7 +85,7 @@ class Database:
     @asynccontextmanager
     async def acquire(self):
         """
-        Acquire connection from pool
+        Acquire connection from pool with error handling
 
         Usage:
             async with db.acquire() as conn:
@@ -73,84 +94,141 @@ class Database:
         if self.pool is None:
             await self.connect()
 
-        async with self.pool.acquire() as connection:
-            yield connection
+        try:
+            async with self.pool.acquire() as conn:
+                # Check if connection is still alive
+                try:
+                    await conn.fetchval('SELECT 1')
+                except Exception:
+                    # Connection is dead, try to get a new one
+                    logger.warning("Connection died, acquiring new one...")
+                    raise
 
-    async def execute(self, query: str, *args, timeout: float = None) -> str:
+                yield conn
+        except Exception as e:
+            logger.error(f"Error acquiring database connection: {e}")
+            raise
+
+    async def execute(self, query: str, *args, timeout: float = None, max_retries: int = 3) -> str:
         """
-        Execute a query that doesn't return data
+        Execute a query that doesn't return data with retry logic
 
         Args:
             query: SQL query
             *args: Query parameters
             timeout: Query timeout in seconds
+            max_retries: Number of retry attempts on connection errors
 
         Returns:
             Execution status string
         """
-        async with self.acquire() as conn:
-            return await conn.execute(query, *args, timeout=timeout)
+        for attempt in range(max_retries):
+            try:
+                async with self.acquire() as conn:
+                    return await conn.execute(query, *args, timeout=timeout)
+            except (asyncpg.PostgresConnectionError, asyncpg.InterfaceError, asyncpg.OperationalError) as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Query failed after {max_retries} attempts: {e}")
+                    raise
+                logger.warning(f"Query failed (attempt {attempt + 1}/{max_retries}): {e}, retrying...")
+                await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
 
-    async def executemany(self, command: str, args, timeout: float = None) -> str:
+    async def executemany(self, command: str, args, timeout: float = None, max_retries: int = 3) -> str:
         """
-        Execute command multiple times with different parameter sets
+        Execute command multiple times with different parameter sets with retry logic
 
         Args:
             command: SQL command
             args: Iterable of parameter sets
             timeout: Query timeout in seconds
+            max_retries: Number of retry attempts on connection errors
 
         Returns:
             Execution status string
         """
-        async with self.acquire() as conn:
-            return await conn.executemany(command, args, timeout=timeout)
+        for attempt in range(max_retries):
+            try:
+                async with self.acquire() as conn:
+                    return await conn.executemany(command, args, timeout=timeout)
+            except (asyncpg.PostgresConnectionError, asyncpg.InterfaceError, asyncpg.OperationalError) as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Query failed after {max_retries} attempts: {e}")
+                    raise
+                logger.warning(f"Query failed (attempt {attempt + 1}/{max_retries}): {e}, retrying...")
+                await asyncio.sleep(1 * (attempt + 1))
 
-    async def fetchval(self, query: str, *args, column: int = 0, timeout: float = None) -> Any:
+    async def fetchval(self, query: str, *args, column: int = 0, timeout: float = None, max_retries: int = 3) -> Any:
         """
-        Fetch a single value from query result
+        Fetch a single value from query result with retry logic
 
         Args:
             query: SQL query
             *args: Query parameters
             column: Column index to return
             timeout: Query timeout in seconds
+            max_retries: Number of retry attempts on connection errors
 
         Returns:
             Single value or None
         """
-        async with self.acquire() as conn:
-            return await conn.fetchval(query, *args, column=column, timeout=timeout)
+        for attempt in range(max_retries):
+            try:
+                async with self.acquire() as conn:
+                    return await conn.fetchval(query, *args, column=column, timeout=timeout)
+            except (asyncpg.PostgresConnectionError, asyncpg.InterfaceError, asyncpg.OperationalError) as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Query failed after {max_retries} attempts: {e}")
+                    raise
+                logger.warning(f"Query failed (attempt {attempt + 1}/{max_retries}): {e}, retrying...")
+                await asyncio.sleep(1 * (attempt + 1))
 
-    async def fetchrow(self, query: str, *args, timeout: float = None) -> Optional[asyncpg.Record]:
+    async def fetchrow(self, query: str, *args, timeout: float = None, max_retries: int = 3) -> Optional[asyncpg.Record]:
         """
-        Fetch a single row from query result
+        Fetch a single row from query result with retry logic
 
         Args:
             query: SQL query
             *args: Query parameters
             timeout: Query timeout in seconds
+            max_retries: Number of retry attempts on connection errors
 
         Returns:
             Record object or None
         """
-        async with self.acquire() as conn:
-            return await conn.fetchrow(query, *args, timeout=timeout)
+        for attempt in range(max_retries):
+            try:
+                async with self.acquire() as conn:
+                    return await conn.fetchrow(query, *args, timeout=timeout)
+            except (asyncpg.PostgresConnectionError, asyncpg.InterfaceError, asyncpg.OperationalError) as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Query failed after {max_retries} attempts: {e}")
+                    raise
+                logger.warning(f"Query failed (attempt {attempt + 1}/{max_retries}): {e}, retrying...")
+                await asyncio.sleep(1 * (attempt + 1))
 
-    async def fetch(self, query: str, *args, timeout: float = None) -> List[asyncpg.Record]:
+    async def fetch(self, query: str, *args, timeout: float = None, max_retries: int = 3) -> List[asyncpg.Record]:
         """
-        Fetch all rows from query result
+        Fetch all rows from query result with retry logic
 
         Args:
             query: SQL query
             *args: Query parameters
             timeout: Query timeout in seconds
+            max_retries: Number of retry attempts on connection errors
 
         Returns:
             List of Record objects
         """
-        async with self.acquire() as conn:
-            return await conn.fetch(query, *args, timeout=timeout)
+        for attempt in range(max_retries):
+            try:
+                async with self.acquire() as conn:
+                    return await conn.fetch(query, *args, timeout=timeout)
+            except (asyncpg.PostgresConnectionError, asyncpg.InterfaceError, asyncpg.OperationalError) as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Query failed after {max_retries} attempts: {e}")
+                    raise
+                logger.warning(f"Query failed (attempt {attempt + 1}/{max_retries}): {e}, retrying...")
+                await asyncio.sleep(1 * (attempt + 1))
 
     async def transaction(self):
         """
@@ -164,47 +242,6 @@ class Database:
         async with self.acquire() as conn:
             async with conn.transaction():
                 yield conn
-
-
-class SubscriptionRepository:
-    """Repository for subscriptions table operations"""
-
-    def __init__(self, db: Database):
-        self.db = db
-
-    async def get_active_subscription(self, master_id: uuid.UUID) -> Optional[Dict]:
-        """Get active subscription for a master"""
-        query = """
-            SELECT id, master_id, plan, status, bots_limit, appointments_limit,
-                   starts_at, expires_at, auto_renew
-            FROM subscriptions
-            WHERE master_id = $1
-                AND status = 'active'
-                AND (expires_at IS NULL OR expires_at > NOW())
-            ORDER BY created_at DESC
-            LIMIT 1
-        """
-        row = await self.db.fetchrow(query, master_id)
-        return dict(row) if row else None
-
-    async def can_create_bot(self, master_id: uuid.UUID) -> bool:
-        """Check if master can create more bots based on subscription"""
-        subscription = await self.get_active_subscription(master_id)
-
-        if not subscription:
-            # Free tier: 1 bot
-            subscription = {'bots_limit': 1}
-        elif subscription['bots_limit'] is None:
-            # Unlimited bots
-            return True
-
-        # Count active bots
-        bot_count = await self.db.fetchval(
-            "SELECT COUNT(*) FROM bots WHERE master_id = $1 AND is_active = true",
-            master_id
-        )
-
-        return bot_count < subscription['bots_limit']
 
 
 class ServiceRepository:

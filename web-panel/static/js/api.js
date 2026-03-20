@@ -138,6 +138,27 @@ const AppointmentsAPI = {
 };
 
 /**
+ * Analytics API
+ */
+const AnalyticsAPI = {
+    async getMasterOverview(token) {
+        return apiRequest(`/analytics/masters/overview?token=${token}`);
+    },
+
+    async getBotOverview(botId, token, days = 30) {
+        return apiRequest(`/analytics/bots/${botId}/overview?token=${token}&days=${days}`);
+    },
+
+    async getBotRevenue(botId, token, days = 30) {
+        return apiRequest(`/analytics/bots/${botId}/revenue?token=${token}&days=${days}`);
+    },
+
+    async getBotAppointments(botId, token, days = 30) {
+        return apiRequest(`/analytics/bots/${botId}/appointments?token=${token}&days=${days}`);
+    }
+};
+
+/**
  * Storage helpers
  */
 const Storage = {

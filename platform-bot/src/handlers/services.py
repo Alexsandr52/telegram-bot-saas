@@ -345,3 +345,101 @@ async def delete_service(callback: CallbackQuery) -> None:
     except Exception as e:
         logger.error(f"Error deleting service: {e}")
         await callback.answer("❌ Ошибка при удалении услуги", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("service_edit_fields:"))
+async def service_edit_fields(callback: CallbackQuery, state: FSMContext) -> None:
+    """Show service field editing options"""
+    service_id = callback.data.split(":")[1]
+
+    try:
+        service_repo = get_service_repo()
+        service = await service_repo.get_service(service_id)
+
+        if not service:
+            await callback.answer("❌ Услуга не найдена", show_alert=True)
+            return
+
+        await state.update_data(service_id=service_id)
+
+        text = (
+            f"✏️ *Редактирование: {service['name']}*\n\n"
+            f"💰 Текущая цена: {service['price']}₽\n"
+            f"⏱️ Длительность: {service['duration_minutes']} мин\n\n"
+            f"Выберите поле для изменения:"
+        )
+
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="💰 Изменить цену", callback_data=f"edit_price:{service_id}"),
+                InlineKeyboardButton(text="⏱️ Изменить длительность", callback_data=f"edit_duration:{service_id}")
+            ],
+            [
+                InlineKeyboardButton(text="📝 Изменить описание", callback_data=f"edit_description:{service_id}"),
+                InlineKeyboardButton(text="🔄 Сменить статус", callback_data=f"service_toggle_active:{service_id}")
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_service:{service_id}")
+            ]
+        ])
+
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in service_edit_fields: {e}")
+        await callback.answer("❌ Ошибка при загрузке услуги", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("edit_price:"))
+async def edit_service_price(callback: CallbackQuery, state: FSMContext) -> None:
+    """Start editing service price"""
+    service_id = callback.data.split(":")[1]
+    await state.update_data(service_id=service_id, editing_field="price")
+    await state.set_state(ServiceStates.waiting_for_price)
+
+    await callback.message.edit_text(
+        "💰 *Введите новую цену услуги в рублях:*\n\n"
+        "_Например: 1500 или 1500₽_",
+        parse_mode="Markdown",
+        reply_markup=create_back_button(f"service_edit_fields:{service_id}")
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit_duration:"))
+async def edit_service_duration(callback: CallbackQuery, state: FSMContext) -> None:
+    """Start editing service duration"""
+    service_id = callback.data.split(":")[1]
+    await state.update_data(service_id=service_id, editing_field="duration")
+    await state.set_state(ServiceStates.waiting_for_duration)
+
+    await callback.message.edit_text(
+        "⏱️ *Введите новую длительность услуги в минутах:*\n\n"
+        "_Например: 60_",
+        parse_mode="Markdown",
+        reply_markup=create_back_button(f"service_edit_fields:{service_id}")
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit_description:"))
+async def edit_service_description(callback: CallbackQuery, state: FSMContext) -> None:
+    """Start editing service description"""
+    service_id = callback.data.split(":")[1]
+    await state.update_data(service_id=service_id, editing_field="description")
+    await state.set_state(ServiceStates.waiting_for_description)
+
+    await callback.message.edit_text(
+        "📝 *Введите новое описание услуги (необязательно):*\n\n"
+        "Отправьте описание или /skip чтобы пропустить",
+        parse_mode="Markdown",
+        reply_markup=create_back_button(f"service_edit_fields:{service_id}")
+    )
+    await callback.answer()

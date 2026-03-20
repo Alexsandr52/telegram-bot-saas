@@ -1,0 +1,7 @@
+# Shared Logging Requirements
+fastapi>=0.100.0
+pydantic>=2.0.0
+uvicorn[standard]>=0.20.0
+asyncpg>=0.28.0
+python-multipart>=0.0.5
+sentry-sdk[fastapi]>=1.40.0

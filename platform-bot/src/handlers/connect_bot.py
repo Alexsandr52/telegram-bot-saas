@@ -14,6 +14,7 @@ from loguru import logger
 from src.utils.db import MasterRepository, BotRepository, SubscriptionRepository
 from src.utils.encryption import encrypt_token
 from src.utils.config import get_settings
+from src.utils.analytics import log_platform_event, PlatformEventType
 from src.keyboards import (
     get_main_menu_keyboard,
     get_bots_list_keyboard,
@@ -293,6 +294,17 @@ async def process_bot_name(
         )
 
         logger.info(f"Bot {bot_id} (@{bot_username}) created by user {message.from_user.id}")
+
+        # Log analytics event
+        await log_platform_event(
+            PlatformEventType.BOT_CREATED,
+            master_id=master['id'],
+            user_id=message.from_user.id,
+            event_data={
+                'bot_id': str(bot_id),
+                'bot_username': bot_username
+            }
+        )
 
         await state.clear()
 

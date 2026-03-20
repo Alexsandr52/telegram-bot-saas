@@ -13,6 +13,15 @@ from keyboards import (
     get_services_keyboard
 )
 from utils.config import get_config_manager
+from utils.db import get_database
+
+
+# Event types for analytics
+class ClientEventType:
+    """Client event types"""
+    BOT_STARTED = "bot_started"
+    CATALOG_VIEWED = "catalog_viewed"
+    HELP_VIEWED = "help_viewed"
 
 
 router = Router(name="client_menu")
@@ -46,6 +55,14 @@ async def cmd_start(message: Message) -> None:
     )
 
     logger.info(f"User {message.from_user.id} started bot")
+
+    # Log analytics event
+    db = get_database()
+    if db:
+        await db.log_analytics_event(
+            ClientEventType.BOT_STARTED,
+            user_id=message.from_user.id
+        )
 
 
 @router.callback_query(F.data == "main_menu")
@@ -128,6 +145,14 @@ async def handle_custom_command(callback: CallbackQuery) -> None:
         return
 
     handler_type = getattr(cmd_config, 'handler_type', '')
+
+    # Log analytics event for catalog view
+    db = get_database()
+    if handler_type == 'catalog' and db:
+        await db.log_analytics_event(
+            ClientEventType.CATALOG_VIEWED,
+            user_id=callback.from_user.id
+        )
 
     # Route to appropriate handler
     if handler_type == 'catalog':

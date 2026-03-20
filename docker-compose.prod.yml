@@ -1,0 +1,347 @@
+# ============================================
+# Telegram Bot SaaS - Production Docker Compose
+# For VPS Deployment
+# ============================================
+
+version: '3.9'
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  database:
+    image: postgres:15-alpine
+    container_name: bot_saas_db_prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/init:/docker-entrypoint-initdb.d/scripts
+      - ./backups/postgres:/backups
+    networks:
+      - bot_saas_network_prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # No ports exposed - internal only
+
+  # ============================================
+  # Redis (Cache & Queue)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: bot_saas_redis_prod
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data_prod:/data
+    networks:
+      - bot_saas_network_prod
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No ports exposed - internal only
+
+  # ============================================
+  # Platform Bot (Main bot for masters)
+  # ============================================
+  platform-bot:
+    build:
+      context: ./platform-bot
+      dockerfile: Dockerfile
+    container_name: bot_saas_platform_bot_prod
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # Bot Configuration
+      BOT_TOKEN: ${PLATFORM_BOT_TOKEN}
+      BOT_WEBHOOK_MODE: "true"
+      BOT_WEBHOOK_SECRET: ${PLATFORM_BOT_WEBHOOK_SECRET}
+      BOT_WEBHOOK_URL: ${WEBHOOK_BASE_URL}/webhook/platform
+
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_ENABLED: "true"
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+
+      # Factory Service
+      FACTORY_SERVICE_URL: http://factory-service:8001
+
+      # Web Panel URL
+      WEB_PANEL_URL: ${WEB_PANEL_URL}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: "false"
+    networks:
+      - bot_saas_network_prod
+    volumes:
+      - ./logs/platform-bot:/var/log/platform-bot
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # Factory Service (Bot container management)
+  # ============================================
+  factory-service:
+    build:
+      context: ./factory-service
+      dockerfile: Dockerfile
+    container_name: bot_saas_factory_service_prod
+    restart: always
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+
+      # Docker
+      DOCKER_HOST: unix:///var/run/docker.sock
+
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+
+      # Bot Template Image
+      BOT_TEMPLATE_IMAGE: ${BOT_TEMPLATE_IMAGE:-telegram-bot-saas/bot-template:latest}
+      BOT_CONTAINER_NETWORK: bot_saas_network_prod
+
+      # Webhook Base URL for new bots
+      WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks:
+      - bot_saas_network_prod
+      - bot_saas_bot_network_prod
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./bot-templates:/bot-templates
+      - ./logs/factory:/var/log/factory
+    ports:
+      - "8001:8001"
+
+  # ============================================
+  # Web API (Backend for web panel)
+  # ============================================
+  web-api:
+    build:
+      context: ./web-api
+      dockerfile: Dockerfile
+    container_name: bot_saas_web_api_prod
+    restart: always
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+
+      # Security
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: "false"
+    networks:
+      - bot_saas_network_prod
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - ./logs/api:/var/log/api
+
+  # ============================================
+  # Web Panel (Frontend for masters)
+  # ============================================
+  web-panel:
+    build:
+      context: ./web-panel
+      dockerfile: Dockerfile
+    container_name: bot_saas_web_panel_prod
+    restart: always
+    networks:
+      - bot_saas_network_prod
+    environment:
+      - API_BASE_URL=/api
+      - WS_BASE_URL=/api/ws
+
+  # ============================================
+  # Notification Service (Reminders & Alerts)
+  # ============================================
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: bot_saas_notification_service_prod
+    restart: always
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_ENABLED: "true"
+
+      # Notification settings
+      NOTIFICATION_CHECK_INTERVAL: ${NOTIFICATION_CHECK_INTERVAL:-300}
+      NOTIFICATION_WORKER_CONCURRENCY: ${NOTIFICATION_WORKER_CONCURRENCY:-2}
+
+      # Retry settings
+      MAX_RETRY_ATTEMPTS: ${MAX_RETRY_ATTEMPTS:-3}
+      RETRY_DELAY_SECONDS: ${RETRY_DELAY_SECONDS:-300}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: "false"
+    networks:
+      - bot_saas_network_prod
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs/notifications:/var/log/notifications
+
+  # ============================================
+  # Logging Service (Centralized Log Management)
+  # ============================================
+  logging-service:
+    build:
+      context: ./shared/logging
+      dockerfile: Dockerfile
+    container_name: bot_saas_logging_service_prod
+    restart: always
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+
+      # API
+      HOST: 0.0.0.0
+      PORT: 8001
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS}
+
+      # Logging configuration
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_TO_DB: "true"
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    networks:
+      - bot_saas_network_prod
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - ./logs/central:/var/log/logging
+
+  # ============================================
+  # Nginx (API Gateway & Reverse Proxy)
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: bot_saas_nginx_prod
+    restart: always
+    environment:
+      SERVER_DOMAIN: ${SERVER_DOMAIN}
+    networks:
+      - bot_saas_network_prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx-prod.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - platform-bot
+      - factory-service
+      - web-api
+      - web-panel
+      - notification-service
+
+  # ============================================
+  # Certbot (SSL Certificate Renewal)
+  # ============================================
+  certbot:
+    image: certbot/certbot:latest
+    container_name: bot_saas_certbot_prod
+    restart: always
+    networks:
+      - bot_saas_network_prod
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  # ============================================
+  # Backup Service (Database & File Backups)
+  # ============================================
+  backup:
+    image: prodrigestivill/postgres-backup-local:15
+    container_name: bot_saas_backup_prod
+    restart: always
+    environment:
+      POSTGRES_HOST: database
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SCHEDULE: ${BACKUP_SCHEDULE:-0 3 * * *}
+      BACKUP_KEEP_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_KEEP_WEEKS: ${BACKUP_RETENTION_WEEKS:-8}
+      BACKUP_KEEP_MONTHS: ${BACKUP_RETENTION_MONTHS:-6}
+      HEALTHCHECK_PORT: 8080
+    volumes:
+      - ./backups/postgres:/backups
+    networks:
+      - bot_saas_network_prod
+    depends_on:
+      database:
+        condition: service_healthy
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  bot_saas_network_prod:
+    name: bot_saas_network_prod
+    driver: bridge
+
+  bot_saas_bot_network_prod:
+    name: bot_saas_bot_network_prod
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres_data_prod:
+    name: bot_saas_postgres_data_prod
+    driver: local
+
+  redis_data_prod:
+    name: bot_saas_redis_data_prod
+    driver: local

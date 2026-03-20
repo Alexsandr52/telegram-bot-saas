@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.utils.config import get_settings
 from src.utils.db import Database
 from src.utils.repositories import init_repositories
+from shared.error_logging import init_error_logging, close_error_logging, log_exception, ErrorLevel, ErrorCategory
 
 # Import routers
 from src.handlers import start, connect_bot, services, appointments, schedule, auth
@@ -46,10 +47,14 @@ logger.add(
 # ============================================
 
 async def init_db():
-    """Initialize database connection"""
+    """Initialize database connection and error logging"""
     db = Database(settings.DATABASE_URL)
     await db.connect()
     init_repositories(db)
+
+    # Initialize error logging system
+    await init_error_logging(settings.DATABASE_URL)
+
     logger.info("Database initialized")
 
 
@@ -83,6 +88,71 @@ async def main() -> None:
     dp.include_router(schedule.router)
     dp.include_router(auth.router)
 
+    # Add error handler for unhandled exceptions
+    from aiogram import types
+    from aiogram.exceptions import TelegramBadRequest, TelegramForbidden, TelegramNotFound
+
+    @dp.errors()
+    async def error_handler(event, exception):
+        """Global error handler for all exceptions"""
+        logger.error(f"Unhandled exception: {exception}", exc_info=True)
+
+        # Get user_id and context
+        user_id = event.from_user.id if hasattr(event, 'from_user') and event.from_user else None
+        context = {
+            'event_type': type(event).__name__,
+            'user_id': str(user_id) if user_id else None
+        }
+
+        # Log to error_logs database
+        try:
+            # Determine error category
+            error_category = ErrorCategory.SYSTEM
+            if 'telegram' in type(exception).__name__.lower() or 'aiogram' in type(exception).__module__:
+                error_category = ErrorCategory.TELEGRAM_API
+            elif 'postgres' in str(exception).lower() or 'database' in str(exception).lower():
+                error_category = ErrorCategory.DATABASE
+
+            # Determine error level
+            error_level = ErrorLevel.ERROR
+            if isinstance(exception, (TelegramBadRequest, TelegramForbidden)):
+                # Expected user errors - WARNING level
+                error_level = ErrorLevel.WARNING
+            elif "CRITICAL" in str(exception).upper() or "FATAL" in str(exception).upper():
+                # Critical errors
+                error_level = ErrorLevel.CRITICAL
+
+            # Log to database
+            await log_exception(
+                exception=exception,
+                level=error_level,
+                category=error_category,
+                context=context,
+                user_id=user_id,
+                service_name='platform-bot'
+            )
+
+            # Also log to analytics for tracking
+            from src.utils.analytics import log_platform_event, PlatformEventType
+            await log_platform_event(
+                PlatformEventType.BOT_ERROR,
+                user_id=user_id,
+                event_data={
+                    'error_type': type(exception).__name__,
+                    'error_message': str(exception),
+                    'error_level': error_level.value,
+                    'error_category': error_category.value
+                }
+            )
+        except Exception as log_error:
+            logger.error(f"Failed to log error: {log_error}")
+
+        # Send error response to user
+        if isinstance(event, types.Message):
+            await event.answer("😔 Произошла ошибка. Пожалуйста, попробуйте позже.")
+        elif isinstance(event, types.CallbackQuery):
+            await event.answer("😔 Произошла ошибка. Попробуйте снова.", show_alert=True)
+
     # Get bot info
     try:
         bot_info = await bot.get_me()
@@ -91,16 +161,67 @@ async def main() -> None:
         logger.error(f"Failed to get bot info: {e}")
         return
 
-    # Start polling
-    logger.info("Starting polling mode...")
-    try:
-        await dp.start_polling(bot)
-    finally:
-        # Cleanup
-        from src.utils.repositories import get_db
-        db = get_db()
-        if db:
-            await db.close()
+    # Check webhook mode
+    if settings.BOT_WEBHOOK_MODE:
+        # Webhook mode
+        webhook_url = settings.BOT_WEBHOOK_URL or f"{settings.WEB_PANEL_URL}{settings.BOT_WEBHOOK_PATH}"
+        logger.info(f"Starting webhook mode on {webhook_url}...")
+
+        # Set webhook
+        await bot.set_webhook(
+            url=webhook_url,
+            secret_token=settings.BOT_WEBHOOK_SECRET
+        )
+
+        # Create aiohttp application
+        app = web.Application()
+
+        # Create webhook handler
+        webhook_handler = SimpleRequestHandler(
+            dispatcher=dp,
+            bot=bot,
+            secret_token=settings.BOT_WEBHOOK_SECRET
+        )
+
+        # Setup application
+        webhook_requests_handler = webhook_handler.handle
+        setup_application(app, dp, bot=bot)
+
+        # Add webhook route
+        app.router.add_post(settings.BOT_WEBHOOK_PATH, webhook_requests_handler)
+
+        # Start aiohttp server
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host="0.0.0.0", port=8080)
+        await site.start()
+        logger.info(f"Webhook server started on 0.0.0.0:8080")
+
+        try:
+            # Keep the server running
+            while True:
+                await asyncio.sleep(3600)
+        finally:
+            # Cleanup
+            await bot.delete_webhook()
+            await runner.cleanup()
+            from src.utils.repositories import get_db
+            db = get_db()
+            if db:
+                await db.close()
+            await close_error_logging()
+    else:
+        # Polling mode
+        logger.info("Starting polling mode...")
+        try:
+            await dp.start_polling(bot)
+        finally:
+            # Cleanup
+            from src.utils.repositories import get_db
+            db = get_db()
+            if db:
+                await db.close()
+            await close_error_logging()
 
 
 if __name__ == "__main__":

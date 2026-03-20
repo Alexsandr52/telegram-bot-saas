@@ -13,6 +13,13 @@ from utils.config import get_config_manager
 from utils.db import get_database
 
 
+# Event types for analytics
+class ServiceEventType:
+    """Service event types"""
+    SERVICE_VIEWED = "service_viewed"
+    DATE_SELECTED = "date_selected"
+
+
 router = Router(name="services")
 
 
@@ -90,6 +97,17 @@ async def service_selected(callback: CallbackQuery, state: FSMContext) -> None:
     # Save service_id to state
     await state.update_data(service_id=service_id, service_name=service['name'])
 
+    # Log analytics event
+    await db.log_analytics_event(
+        ServiceEventType.SERVICE_VIEWED,
+        user_id=callback.from_user.id,
+        event_data={
+            'service_id': service_id,
+            'service_name': service['name'],
+            'price': float(service['price'])
+        }
+    )
+
     # Show date selection
     await callback.message.edit_text(
         f"✅ Выбрана услуга: *{service['name']}*\n\n"
@@ -125,6 +143,16 @@ async def date_selected(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(selected_date=selected_date)
 
     db = get_database()
+
+    # Log analytics event
+    await db.log_analytics_event(
+        ServiceEventType.DATE_SELECTED,
+        user_id=callback.from_user.id,
+        event_data={
+            'service_id': service_id,
+            'date': date_str
+        }
+    )
 
     # Get available slots
     slots = await db.get_available_slots(service_id, selected_date)

@@ -1,97 +1,89 @@
 """
-Global repository instances (singletons)
-Initialized on application startup
+Database connection and queries for Platform Bot
+Uses asyncpg for async PostgreSQL operations
 """
-from typing import Optional
-
-from .db import (
-    MasterRepository,
-    BotRepository,
-    SubscriptionRepository,
-    ServiceRepository,
-    AppointmentRepository,
-    ScheduleRepository,
-    SessionRepository,
-    Database
-)
+import asyncio
+import uuid
+from datetime import datetime
+from typing import Optional, List, Dict, Any
+from contextlib import asynccontextmanager
+import asyncpg
+from loguru import logger
 
 
-# Global instances
-_master_repo: Optional[MasterRepository] = None
-_bot_repo: Optional[BotRepository] = None
-_subscription_repo: Optional[SubscriptionRepository] = None
-_service_repo: Optional[ServiceRepository] = None
-_appointment_repo: Optional[AppointmentRepository] = None
-_schedule_repo: Optional[ScheduleRepository] = None
-_session_repo: Optional[SessionRepository] = None
-_db: Optional[Database] = None
+class Database:
+    """
+    Async PostgreSQL database client using asyncpg
 
+    Usage:
+        db = Database(dsn="postgresql://user:pass@host:port/db")
+        await db.connect()
 
-def init_repositories(db: Database) -> None:
-    """Initialize repository instances"""
-    global _master_repo, _bot_repo, _subscription_repo, _service_repo, _appointment_repo, _schedule_repo, _session_repo, _db
+        result = await db.fetchval("SELECT ...")
+        await db.execute("INSERT INTO ...")
 
-    _db = db
-    _master_repo = MasterRepository(db)
-    _bot_repo = BotRepository(db)
-    _subscription_repo = SubscriptionRepository(db)
-    _service_repo = ServiceRepository(db)
-    _appointment_repo = AppointmentRepository(db)
-    _schedule_repo = ScheduleRepository(db)
-    _session_repo = SessionRepository(db)
+        await db.close()
+    """
 
+    def __init__(self, dsn: str, min_size: int = 10, max_size: int = 20):
+        """
+        Initialize database connection pool
 
-def get_master_repo() -> MasterRepository:
-    """Get master repository instance"""
-    if _master_repo is None:
-        raise RuntimeError("Master repository not initialized. Call init_repositories first.")
-    return _master_repo
+        Args:
+            dsn: PostgreSQL connection string
+            min_size: Minimum pool size
+            max_size: Maximum pool size
+        """
+        self.dsn = dsn
+        self.min_size = min_size
+        self.max_size = max_size
+        self.pool: Optional[asyncpg.Pool] = None
 
+    async def connect(self) -> None:
+        """Create connection pool"""
+        if self.pool is None:
+            try:
+                self.pool = await asyncpg.create_pool(
+                    self.dsn,
+                    min_size=self.min_size,
+                    max_size=self.max_size,
+                    command_timeout=60,
+                )
+                logger.info("Database connection pool created")
+            except Exception as e:
+                logger.error(f"Failed to create database pool: {e}")
+                raise
 
-def get_bot_repo() -> BotRepository:
-    """Get bot repository instance"""
-    if _bot_repo is None:
-        raise RuntimeError("Bot repository not initialized. Call init_repositories first.")
-    return _bot_repo
+    async def close(self) -> None:
+        """Close connection pool"""
+        if self.pool:
+            await self.pool.close()
+            self.pool = None
+            logger.info("Database connection pool closed")
 
+    @asynccontextmanager
+    async def acquire(self):
+        """
+        Acquire connection from pool
 
-def get_subscription_repo() -> SubscriptionRepository:
-    """Get subscription repository instance"""
-    if _subscription_repo is None:
-        raise RuntimeError("Subscription repository not initialized. Call init_repositories first.")
-    return _subscription_repo
+        Usage:
+            async with db.acquire() as conn:
+                result = await conn.fetchval("SELECT ...")
+        """
+        if self.pool is None:
+            await self.connect()
 
+        async with self.pool.acquire() as connection:
+            yield connection
 
-def get_service_repo() -> ServiceRepository:
-    """Get service repository instance"""
-    if _service_repo is None:
-        raise RuntimeError("Service repository not initialized. Call init_repositories first.")
-    return _service_repo
+    async def execute(self, query: str, *args, timeout: float = None) -> str:
+        """
+        Execute a query that doesn't return data
 
+        Args:
+            query: SQL query
+            *args: Query parameters
+            timeout: Query timeout in seconds
 
-def get_appointment_repo() -> AppointmentRepository:
-    """Get appointment repository instance"""
-    if _appointment_repo is None:
-        raise RuntimeError("Appointment repository not initialized. Call init_repositories first.")
-    return _appointment_repo
-
-
-def get_schedule_repo() -> ScheduleRepository:
-    """Get schedule repository instance"""
-    if _schedule_repo is None:
-        raise RuntimeError("Schedule repository not initialized. Call init_repositories first.")
-    return _schedule_repo
-
-
-def get_session_repo() -> SessionRepository:
-    """Get session repository instance"""
-    if _session_repo is None:
-        raise RuntimeError("Session repository not initialized. Call init_repositories first.")
-    return _session_repo
-
-
-def get_db() -> Database:
-    """Get database instance"""
-    if _db is None:
-        raise RuntimeError("Database not initialized. Call init_repositories first.")
-    return _db
+        Returns:
+            Execution status string

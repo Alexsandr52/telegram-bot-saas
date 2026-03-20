@@ -242,6 +242,41 @@ services:
       - redis
 
   # ============================================
+  # Logging Service (Centralized Log Management)
+  # ============================================
+  logging-service:
+    build:
+      context: ./shared/logging
+      dockerfile: Dockerfile
+    container_name: bot_saas_logging_service
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@database:5432/${POSTGRES_DB:-bot_saas}
+
+      # API
+      HOST: 0.0.0.0
+      PORT: 8001
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:80}
+
+      # Logging configuration
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_FILE_PATH: /var/log/logging/app.log
+      LOG_TO_DB: ${LOG_TO_DB:-true}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    networks:
+      - bot_saas_network
+    depends_on:
+      - database
+    volumes:
+      - ./logs:/var/log/logging
+    ports:
+      - "8001:8001"
+
+  # ============================================
   # Nginx (API Gateway & Reverse Proxy)
   # ============================================
   nginx:

@@ -124,7 +124,7 @@ class NotificationDatabase:
                 error_message = NULL
             WHERE status = 'failed'
                 AND attempts < max_attempts
-                AND updated_at < NOW() - INTERVAL '1 minute' * $1
+                AND created_at < NOW() - INTERVAL '1 minute' * $1
         """
 
         try:

@@ -28,6 +28,12 @@
                             Записи
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-page="analytics">
+                            <span class="icon">📊</span>
+                            Аналитика
+                        </a>
+                    </li>
                 </ul>
             </nav>
 
@@ -41,6 +47,165 @@
 
         <!-- Main Content -->
         <main class="main-content">
+            <!-- Analytics Page -->
+            <div id="analyticsPage" class="page" style="display: none;">
+                <div class="content-header">
+                    <h1>📊 Аналитика</h1>
+                    <p class="breadcrumb">Обзор вашей статистики</p>
+                </div>
+
+                <!-- Master Overview -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🤖</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="totalBots">0</div>
+                            <div class="stat-label">Всего ботов</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="activeBots">0</div>
+                            <div class="stat-label">Активных ботов</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📋</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="totalAppointments">0</div>
+                            <div class="stat-label">Всего записей</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">💰</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="totalRevenue">0₽</div>
+                            <div class="stat-label">Общая выручка</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="uniqueClients">0</div>
+                            <div class="stat-label">Уникальных клиентов</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bot Selector -->
+                <div id="botAnalyticsSection" class="card" style="margin-top: 24px;">
+                    <div class="card-header">
+                        <h3 class="card-title">Выберите бота</h3>
+                        <select id="botSelector" class="form-input" style="width: 200px;">
+                            <option value="">Загрузка...</option>
+                        </select>
+                    </div>
+
+                    <!-- Period Selector -->
+                    <div style="margin-top: 16px; display: flex; gap: 8px;">
+                        <button class="btn btn-sm" onclick="changePeriod(7)">7 дней</button>
+                        <button class="btn btn-sm btn-primary" onclick="changePeriod(30)">30 дней</button>
+                        <button class="btn btn-sm" onclick="changePeriod(90)">90 дней</button>
+                    </div>
+                </div>
+
+                <!-- No Bots Message -->
+                <div id="noBotsMessage" class="card" style="display: none; margin-top: 24px;">
+                    <div style="text-align: center; padding: 40px;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">🤖</div>
+                        <h3>Нет ботов</h3>
+                        <p style="color: #64748b;">У вас пока нет созданных ботов. Создайте первого бота через Telegram Bot.</p>
+                    </div>
+                </div>
+
+                <!-- Bot Analytics -->
+                <div id="botAnalyticsContent" class="analytics-content" style="display: none; margin-top: 24px;">
+                    <!-- Bot Stats -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">📋</div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="botTotalAppointments">0</div>
+                                <div class="stat-label">Всего записей</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">✅</div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="botCompletedAppointments">0</div>
+                                <div class="stat-label">Завершено</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">❌</div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="botCancelledAppointments">0</div>
+                                <div class="stat-label">Отменено</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💰</div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="botTotalRevenue">0₽</div>
+                                <div class="stat-label">Выручка</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">👥</div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="botUniqueClients">0</div>
+                                <div class="stat-label">Уникальных клиентов</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📝</div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="botActiveServices">0</div>
+                                <div class="stat-label">Активных услуг</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Revenue Chart -->
+                    <div class="card" style="margin-top: 24px;">
+                        <div class="card-header">
+                            <h3 class="card-title">💰 Выручка по дням</h3>
+                        </div>
+                        <div id="revenueChart" style="padding: 20px; min-height: 300px;"></div>
+                    </div>
+
+                    <!-- Appointments Stats -->
+                    <div class="card" style="margin-top: 24px;">
+                        <div class="card-header">
+                            <h3 class="card-title">📋 Статистика записей</h3>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; padding: 20px;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 24px; color: #eab308; margin-bottom: 8px;" id="pendingAppointments">0</div>
+                                <div style="color: #64748b;">Ожидают</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 24px; color: #22c55e; margin-bottom: 8px;" id="confirmedAppointments">0</div>
+                                <div style="color: #64748b;">Подтверждены</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 24px; color: #4F46E5; margin-bottom: 8px;" id="completedAppointments">0</div>
+                                <div style="color: #64748b;">Завершены</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 24px; color: #ef4444; margin-bottom: 8px;" id="cancelledAppointments">0</div>
+                                <div style="color: #64748b;">Отменены</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 24px; color: #4F46E5; margin-bottom: 8px;" id="conversionRate">0%</div>
+                                <div style="color: #64748b;">Конверсия</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Bots Page -->
             <div id="botsPage" class="page active">
                 <div class="content-header">
@@ -167,6 +332,7 @@
     </div>
 
     <script src="static/js/api.js"></script>
+    <script src="static/js/analytics.js"></script>
     <script src="static/js/dashboard.js"></script>
 </body>
 </html>

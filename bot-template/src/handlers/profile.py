@@ -21,6 +21,15 @@ from utils.config import get_config_manager
 from utils.db import get_database
 
 
+# Event types for analytics
+class ProfileEventType:
+    """Profile event types"""
+    PROFILE_VIEWED = "profile_viewed"
+    APPOINTMENTS_VIEWED = "appointments_viewed"
+    APPOINTMENT_CANCELLED = "appointment_cancelled"
+    PHONE_UPDATED = "phone_updated"
+
+
 router = Router(name="profile")
 
 
@@ -103,6 +112,12 @@ async def show_profile(callback: CallbackQuery) -> None:
     )
     await callback.answer()
 
+    # Log analytics event
+    await db.log_analytics_event(
+        ProfileEventType.PROFILE_VIEWED,
+        user_id=callback.from_user.id
+    )
+
     logger.info(f"User {callback.from_user.id} viewed profile")
 
 
@@ -169,6 +184,12 @@ async def edit_phone_process(message: Message, state: FSMContext) -> None:
             # Update in database
             await db.update_client_phone(str(client['id']), phone)
 
+            # Log analytics event
+            await db.log_analytics_event(
+                ProfileEventType.PHONE_UPDATED,
+                user_id=message.from_user.id
+            )
+
             await message.answer(
                 f"✅ Номер телефона сохранён:\n`{phone}`",
                 parse_mode="Markdown",
@@ -201,6 +222,12 @@ async def edit_phone_process(message: Message, state: FSMContext) -> None:
 @router.callback_query(F.data == "my_appointments")
 async def show_my_appointments(callback: CallbackQuery) -> None:
     """Show appointments type selection"""
+    # Log analytics event
+    await db.log_analytics_event(
+        ProfileEventType.APPOINTMENTS_VIEWED,
+        user_id=callback.from_user.id
+    )
+
     await callback.message.edit_text(
         "📋 *Мои записи*\n\n"
         "Выберите тип записей:",
@@ -452,6 +479,13 @@ async def confirm_cancel_appointment(callback: CallbackQuery) -> None:
     )
 
     if success:
+        # Log analytics event
+        await db.log_analytics_event(
+            ProfileEventType.APPOINTMENT_CANCELLED,
+            user_id=callback.from_user.id,
+            event_data={'appointment_id': appointment_id}
+        )
+
         await callback.message.edit_text(
             "✅ *Запись отменена*\n\n"
             "Вы можете записаться на другую услугу в любое время.",

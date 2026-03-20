@@ -1,17 +1,18 @@
 # ============================================
-# Platform Bot - Dockerfile
+# Logging Service - Dockerfile
+# Centralized logging API and management
 # ============================================
 
 FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
-
-# Set work directory
-WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -21,27 +22,27 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements first for better caching
 COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
-
-# Copy application code
-COPY src/ ./src/
+# Copy source code
+COPY ./src/ ./src/
 
 # Create non-root user
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
+RUN useradd -m -u 1000 logging && \
+    chown -R logging:logging /app
 
 # Switch to non-root user
-USER appuser
+USER logging
 
-# Expose webhook port
-EXPOSE 8080
+# Create logs directory
+RUN mkdir -p /var/log/logging
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.exit(0)"
 
+# Expose port
+EXPOSE 8001
+
 # Default command
-CMD ["python", "src/main.py"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8001"]

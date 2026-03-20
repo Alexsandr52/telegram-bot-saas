@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     # Factory Service
     # ============================================
     FACTORY_SERVICE_URL: str = Field(
-        default="http://factory-service:8002",
+        default="http://factory-service:8001",
         description="Factory Service API URL"
     )
     FACTORY_SERVICE_TIMEOUT: int = 30  # seconds

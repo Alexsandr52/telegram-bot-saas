@@ -14,6 +14,15 @@ from utils.db import get_database
 from handlers.services import BookingStates
 
 
+# Event types for analytics
+class BookingEventType:
+    """Booking event types"""
+    BOOKING_CREATED = "booking_created"
+    BOOKING_CONFIRMED = "booking_confirmed"
+    BOOKING_CANCELLED = "booking_cancelled"
+    BOOKING_COMPLETED = "booking_completed"
+
+
 router = Router(name="booking")
 
 
@@ -197,6 +206,17 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext) -> None:
 
     # Create appointment
     try:
+        # Log analytics event
+        await db.log_analytics_event(
+            BookingEventType.BOOKING_CREATED,
+            user_id=callback.from_user.id,
+            event_data={
+                'service_id': service_id,
+                'service_name': service['name'],
+                'start_time': start_time.isoformat()
+            }
+        )
+
         appointment_id = await db.create_appointment(
             client_id=str(client['id']),
             service_id=service_id,

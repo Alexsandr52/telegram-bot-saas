@@ -11,6 +11,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import Message
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -23,6 +24,9 @@ from utils.config import ConfigManager, set_config_manager
 from utils.db import BotDatabase, set_database
 from handlers import client_menu, services, booking, profile
 
+# Add shared module path for error logging
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+from error_logging import init_error_logging, close_error_logging, log_exception, ErrorLevel, ErrorCategory
 
 # ============================================
 # Configuration
@@ -44,7 +48,6 @@ if not BOT_TOKEN:
 if not BOT_ID:
     raise ValueError("BOT_ID environment variable is required")
 
-
 # Configure logger
 logger.remove()
 logger.add(
@@ -52,7 +55,6 @@ logger.add(
     format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan> - <level>{message}</level>",
     level="INFO"
 )
-
 
 # ============================================
 # Bot Setup
@@ -78,6 +80,9 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     await db.connect()
     set_database(db)
 
+    # Initialize error logging system
+    await init_error_logging(DATABASE_URL)
+
     # Create bot
     bot = Bot(
         token=BOT_TOKEN,
@@ -96,7 +101,78 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     dp.include_router(booking.router)
     dp.include_router(profile.router)
 
-    logger.info(f"Bot handlers registered")
+    # Add global error handler
+    from aiogram import types
+    from aiogram.exceptions import TelegramBadRequest, TelegramForbidden, TelegramNotFound
+
+    @dp.errors()
+    async def error_handler(event, exception):
+        """Global error handler for all exceptions"""
+        logger.error(f"Unhandled exception: {exception}", exc_info=True)
+
+        # Get user_id and context
+        user_id = event.from_user.id if hasattr(event, 'from_user') and event.from_user else None
+        context = {
+            'event_type': type(event).__name__,
+            'user_id': str(user_id) if user_id else None,
+            'bot_id': BOT_ID
+        }
+
+        # Log to error_logs database
+        try:
+            # Determine error category
+            error_category = ErrorCategory.BUSINESS_LOGIC
+            if 'telegram' in type(exception).__name__.lower() or 'aiogram' in type(exception).__module__:
+                error_category = ErrorCategory.TELEGRAM_API
+            elif 'postgres' in str(exception).lower() or 'database' in str(exception).lower():
+                error_category = ErrorCategory.DATABASE
+
+            # Determine error level
+            error_level = ErrorLevel.ERROR
+            if isinstance(exception, (TelegramBadRequest, TelegramForbidden)):
+                # Expected user errors - WARNING level
+                error_level = ErrorLevel.WARNING
+            elif "CRITICAL" in str(exception).upper() or "FATAL" in str(exception).upper():
+                # Critical errors
+                error_level = ErrorLevel.CRITICAL
+
+            # Log to database
+            await log_exception(
+                exception=exception,
+                level=error_level,
+                category=error_category,
+                context=context,
+                user_id=user_id,
+                bot_id=BOT_ID,
+                service_name='bot-template'
+            )
+
+            # Also log to analytics for tracking
+            if hasattr(db, 'log_analytics_event'):
+                await db.log_analytics_event(
+                    'bot_error',
+                    user_id=user_id,
+                    event_data={
+                        'exception': type(exception).__name__,
+                        'message': str(exception),
+                        'event_type': type(event).__name__,
+                        'error_level': error_level.value,
+                        'error_category': error_category.value
+                    }
+                )
+        except Exception as log_error:
+            logger.error(f"Failed to log error: {log_error}")
+
+        # Send error response to user
+        if isinstance(event, types.Message):
+            await event.answer("😔 Произошла ошибка. Пожалуйста, попробуйте позже.")
+        elif isinstance(event, types.CallbackQuery):
+            try:
+                await event.answer("😔 Произошла ошибка. Попробуйте снова.", show_alert=True)
+            except Exception:
+                pass
+
+    logger.info("Bot handlers registered")
 
     return bot, dp
 
@@ -119,7 +195,6 @@ async def config_reloader():
 
 async def main() -> None:
     """Main function to run the bot"""
-
     # Setup bot
     bot, dp = await setup_bot()
 
@@ -132,7 +207,6 @@ async def main() -> None:
         return
 
     # Start config reloader task
-    import asyncio
     reloader_task = asyncio.create_task(config_reloader())
 
     # Start polling or webhook
@@ -156,6 +230,7 @@ async def main() -> None:
                 await config_manager.close()
             if db:
                 await db.close()
+            await close_error_logging()
     else:
         logger.info("Starting polling mode...")
         try:
@@ -170,15 +245,7 @@ async def main() -> None:
                 await config_manager.close()
             if db:
                 await db.close()
-        # Cleanup
-        reloader_task.cancel()
-        config_manager = get_config_manager()
-        db = get_database()
-
-        if config_manager:
-            await config_manager.close()
-        if db:
-            await db.close()
+            await close_error_logging()
 
 
 # ============================================

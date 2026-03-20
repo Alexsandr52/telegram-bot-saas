@@ -69,6 +69,10 @@ function showPage(pageName) {
         document.getElementById('botsPage').style.display = 'block';
         document.getElementById('botsPage').classList.add('active');
         loadBots();
+    } else if (pageName === 'analytics') {
+        document.getElementById('analyticsPage').style.display = 'block';
+        document.getElementById('analyticsPage').classList.add('active');
+        loadAnalyticsPage();
     }
 
     // Update nav
@@ -139,6 +143,7 @@ async function openBot(botId) {
 
         // Show bot detail page
         document.getElementById('botsPage').style.display = 'none';
+        document.getElementById('analyticsPage').style.display = 'none';
         document.getElementById('botDetailPage').style.display = 'block';
 
         // Load data
@@ -571,4 +576,210 @@ async function deleteService(serviceId, serviceName) {
         console.error('Error deleting service:', error);
         alert('Ошибка удаления услуги: ' + error.message);
     }
+}
+
+/**
+ * Format currency
+ */
+function formatCurrency(value) {
+    return new Intl.NumberFormat('ru-RU', {
+        style: 'currency',
+        currency: 'RUB',
+        minimumFractionDigits: 0
+    }).format(value);
+}
+
+/**
+ * Render revenue chart (simple bar chart)
+ */
+function renderRevenueChart(containerId, data) {
+    const container = document.getElementById(containerId);
+    if (!container || !data || data.length === 0) {
+        container.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;">Нет данных для отображения</div>';
+        return;
+    }
+
+    const width = container.offsetWidth || 600;
+    const height = 300;
+    const padding = 40;
+
+    const maxRevenue = Math.max(...data.map(d => d.revenue)) || 1;
+    const barWidth = Math.min((width - padding * 2) / data.length - 10, 50);
+
+    let svg = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow: visible;">`;
+
+    // Draw axes
+    svg += `<line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#e2e8f0" stroke-width="1"/>`;
+    svg += `<line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#e2e8f0" stroke-width="1"/>`;
+
+    // Draw bars
+    data.forEach((d, i) => {
+        const barHeight = (d.revenue / maxRevenue) * (height - padding * 2);
+        const x = padding + i * (barWidth + 10);
+        const y = height - padding - barHeight;
+
+        const dateLabel = new Date(d.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
+        svg += `
+            <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="#4F46E5" rx="4"/>
+            <text x="${x + barWidth / 2}" y="${height - padding + 20}" text-anchor="middle" font-size="10" fill="#64748b">${dateLabel}</text>
+            ${d.revenue > 0 ? `<text x="${x + barWidth / 2}" y="${y - 5}" text-anchor="middle" font-size="10" fill="#4F46E5" font-weight="bold">${Math.round(d.revenue)}₽</text>` : ''}
+        `;
+    });
+
+    svg += '</svg>';
+    container.innerHTML = svg;
+}
+
+/**
+ * Load analytics page
+ */
+async function loadAnalyticsPage() {
+    const token = Storage.getToken();
+    if (!token) {
+        window.location.href = '/';
+        return;
+    }
+
+    try {
+        // Load master overview
+        const masterOverview = await AnalyticsAPI.getMasterOverview(token);
+        renderMasterOverview(masterOverview);
+
+        // Load first bot's analytics if available
+        const bots = await BotsAPI.getAll(token);
+        if (bots && bots.length > 0) {
+            const firstBot = bots[0];
+            await loadBotAnalytics(firstBot.id, token);
+            populateBotSelector(bots, firstBot.id);
+            document.getElementById('botAnalyticsSection').style.display = 'block';
+            document.getElementById('noBotsMessage').style.display = 'none';
+            document.getElementById('botAnalyticsContent').style.display = 'block';
+        } else {
+            document.getElementById('botAnalyticsSection').style.display = 'none';
+            document.getElementById('noBotsMessage').style.display = 'block';
+            document.getElementById('botAnalyticsContent').style.display = 'none';
+        }
+
+    } catch (error) {
+        console.error('Error loading analytics:', error);
+        showNotification('Ошибка загрузки аналитики', 'error');
+    }
+}
+
+/**
+ * Render master overview
+ */
+function renderMasterOverview(data) {
+    document.getElementById('totalBots').textContent = data.total_bots;
+    document.getElementById('activeBots').textContent = data.active_bots;
+    document.getElementById('totalAppointments').textContent = data.total_appointments;
+    document.getElementById('totalRevenue').textContent = formatCurrency(data.total_revenue);
+    document.getElementById('uniqueClients').textContent = data.unique_clients;
+}
+
+/**
+ * Load bot-specific analytics
+ */
+async function loadBotAnalytics(botId, token) {
+    try {
+        // Load overview
+        const overview = await AnalyticsAPI.getBotOverview(botId, token, 30);
+        renderBotOverview(overview);
+
+        // Load revenue
+        const revenue = await AnalyticsAPI.getBotRevenue(botId, token, 30);
+        renderRevenueChart('revenueChart', revenue.daily_data);
+
+        // Load appointments stats
+        const appointments = await AnalyticsAPI.getBotAppointments(botId, token, 30);
+        renderAppointmentsStats(appointments);
+
+    } catch (error) {
+        console.error('Error loading bot analytics:', error);
+    }
+}
+
+/**
+ * Render bot overview
+ */
+function renderBotOverview(data) {
+    document.getElementById('botTotalAppointments').textContent = data.total_appointments;
+    document.getElementById('botCompletedAppointments').textContent = data.completed_appointments;
+    document.getElementById('botCancelledAppointments').textContent = data.cancelled_appointments;
+    document.getElementById('botTotalRevenue').textContent = formatCurrency(data.total_revenue);
+    document.getElementById('botUniqueClients').textContent = data.unique_clients;
+    document.getElementById('botActiveServices').textContent = data.active_services;
+}
+
+/**
+ * Render appointments statistics
+ */
+function renderAppointmentsStats(data) {
+    document.getElementById('pendingAppointments').textContent = data.pending;
+    document.getElementById('confirmedAppointments').textContent = data.confirmed;
+    document.getElementById('completedAppointments').textContent = data.completed;
+    document.getElementById('cancelledAppointments').textContent = data.cancelled;
+    document.getElementById('conversionRate').textContent = data.conversion_rate + '%';
+}
+
+/**
+ * Populate bot selector dropdown
+ */
+function populateBotSelector(bots, selectedId) {
+    const select = document.getElementById('botSelector');
+    select.innerHTML = bots.map(bot =>
+        `<option value="${bot.id}" ${bot.id === selectedId ? 'selected' : ''}>${bot.bot_name || bot.bot_username}</option>`
+    ).join('');
+
+    select.onchange = async (e) => {
+        const token = Storage.getToken();
+        await loadBotAnalytics(e.target.value, token);
+    };
+}
+
+/**
+ * Period change handler
+ */
+async function changePeriod(days) {
+    const token = Storage.getToken();
+    const botId = document.getElementById('botSelector').value;
+
+    try {
+        await AnalyticsAPI.getBotRevenue(botId, token, days).then(data => {
+            renderRevenueChart('revenueChart', data.daily_data);
+        });
+
+        await AnalyticsAPI.getBotOverview(botId, token, days).then(data => {
+            renderBotOverview(data);
+        });
+    } catch (error) {
+        console.error('Error changing period:', error);
+    }
+}
+
+/**
+ * Show notification
+ */
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 24px;
+        background: ${type === 'error' ? '#ef4444' : '#22c55e'};
+        color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+    `;
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
 }

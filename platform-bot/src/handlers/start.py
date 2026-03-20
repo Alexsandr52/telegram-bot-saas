@@ -10,7 +10,8 @@ from loguru import logger
 
 from src.utils.db import MasterRepository, BotRepository, SubscriptionRepository
 from src.utils.repositories import get_master_repo, get_bot_repo, get_subscription_repo
-from src.keyboards import get_main_menu_keyboard
+from src.utils.analytics import log_platform_event, PlatformEventType
+from src.keyboards import get_main_menu_keyboard, get_subscription_keyboard, create_back_button
 
 
 router = Router(name="start_handler")
@@ -76,6 +77,13 @@ async def cmd_start(message: Message) -> None:
         )
 
         logger.info(f"User {telegram_id} (@{username}) started bot")
+
+        # Log analytics event
+        await log_platform_event(
+            PlatformEventType.BOT_STARTED,
+            master_id=master['id'],
+            user_id=telegram_id
+        )
 
     except Exception as e:
         logger.error(f"Error in /start for user {telegram_id}: {e}")
@@ -182,6 +190,13 @@ async def show_statistics(callback: CallbackQuery) -> None:
         )
         await callback.answer()
 
+        # Log analytics event
+        await log_platform_event(
+            PlatformEventType.STATISTICS_VIEWED,
+            master_id=master['id'],
+            user_id=telegram_id
+        )
+
     except Exception as e:
         logger.error(f"Error showing statistics: {e}")
         await callback.answer("❌ Ошибка при загрузке статистики", show_alert=True)
@@ -231,3 +246,146 @@ async def show_settings(callback: CallbackQuery) -> None:
     except Exception as e:
         logger.error(f"Error showing settings: {e}")
         await callback.answer("❌ Ошибка при загрузке настроек", show_alert=True)
+
+
+# ============================================
+# Web Panel Handler
+# ============================================
+
+@router.callback_query(F.data == "web_panel")
+async def web_panel_button(callback: CallbackQuery) -> None:
+    """Web panel button handler"""
+    telegram_id = callback.from_user.id
+    master_repo = get_master_repo()
+
+    try:
+        master = await master_repo.get_master_by_telegram_id(telegram_id)
+        if not master:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
+            return
+
+        # Generate auth token for web panel
+        from src.utils.db import SessionRepository
+        from datetime import timedelta
+        import secrets
+        import os
+
+        session_repo = SessionRepository(master_repo.db)
+        session_token = secrets.token_urlsafe(32)
+
+        # Create session (24 hours expiry)
+        await master_repo.db.execute(
+            """
+            INSERT INTO user_sessions (master_id, session_token, expires_at)
+            VALUES ($1, $2, NOW() + INTERVAL '24 hours')
+            """,
+            master['id'],
+            session_token
+        )
+
+        # Get web panel URL from settings
+        from src.utils.config import get_settings
+        settings = get_settings()
+
+        web_url = settings.WEB_PANEL_URL or "http://localhost:3000"
+        auth_url = f"{web_url}/auth?token={session_token}"
+
+        await callback.message.edit_text(
+            "🌐 *Веб-панель*\n\n"
+            "Нажмите кнопку ниже для входа в веб-панель:\n\n"
+            f"_Ссылка действительна 24 часа_",
+            parse_mode="Markdown",
+            reply_markup=create_back_button("main_menu")
+        )
+
+        # Send separate message with URL button
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Открыть веб-панель", url=auth_url)]
+        ])
+
+        await callback.message.answer(
+            "🔗 Ссылка для входа:",
+            reply_markup=keyboard
+        )
+
+        # Log analytics event
+        await log_platform_event(
+            PlatformEventType.WEB_PANEL_OPENED,
+            master_id=master['id'],
+            user_id=telegram_id
+        )
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in web panel handler: {e}")
+        await callback.answer("❌ Ошибка при получении ссылки", show_alert=True)
+
+
+# ============================================
+# Subscription Handler
+# ============================================
+
+@router.callback_query(F.data == "subscription")
+async def subscription_button(callback: CallbackQuery) -> None:
+    """Subscription button handler"""
+    telegram_id = callback.from_user.id
+    master_repo = get_master_repo()
+    sub_repo = get_subscription_repo()
+
+    try:
+        master = await master_repo.get_master_by_telegram_id(telegram_id)
+        if not master:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
+            return
+
+        # Get subscription info
+        subscription = await sub_repo.get_active_subscription(master['id'])
+
+        if subscription:
+            plan_name = subscription.get('plan_name', 'Free')
+            expires_at = subscription.get('expires_at')
+            bots_limit = subscription.get('bots_limit', 1)
+
+            if expires_at:
+                expiry_str = expires_at.strftime('%d.%m.%Y')
+                expiry_text = f"до {expiry_str}"
+            else:
+                expiry_text = "бессрочно"
+
+            text = (
+                f"💳 *Ваша подписка*\n\n"
+                f"📦 Тариф: {plan_name}\n"
+                f"🤖 Лимит ботов: {bots_limit}\n"
+                f"📅 Действует: {expiry_text}\n\n"
+                f"Хотите изменить тариф?"
+            )
+        else:
+            text = (
+                "💳 *Ваша подписка*\n\n"
+                "🆓 Текущий тариф: Free\n"
+                "🤖 Лимит ботов: 1\n\n"
+                "Улучшите тариф для доступа к дополнительным функциям:"
+            )
+
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=get_subscription_keyboard(
+                current_plan=subscription.get('plan_name', 'free').lower() if subscription else 'free'
+            )
+        )
+
+        # Log analytics event
+        await log_platform_event(
+            PlatformEventType.SUBSCRIPTION_VIEWED,
+            master_id=master['id'],
+            user_id=telegram_id
+        )
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in subscription handler: {e}")
+        await callback.answer("❌ Ошибка при загрузке подписки", show_alert=True)

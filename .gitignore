@@ -53,6 +53,7 @@ claude_code_zai_env.sh
 # ============================================
 # Backups & Data
 # ============================================
+claude_code_zai_env.sh
 backups/
 *.backup
 *.sql

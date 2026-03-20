@@ -55,7 +55,6 @@ class Database:
                     min_size=self.min_size,
                     max_size=self.max_size,
                     command_timeout=60,
-                    server_settings={'connect_timeout': 10}
                 )
                 logger.info(f"Database connection pool created (min={self.min_size}, max={self.max_size})")
                 return  # Success

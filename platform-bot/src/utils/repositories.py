@@ -1,89 +1,98 @@
 """
-Database connection and queries for Platform Bot
-Uses asyncpg for async PostgreSQL operations
+Repository initialization for Platform Bot
 """
-import asyncio
-import uuid
-from datetime import datetime
-from typing import Optional, List, Dict, Any
-from contextlib import asynccontextmanager
-import asyncpg
 from loguru import logger
 
 
-class Database:
-    """
-    Async PostgreSQL database client using asyncpg
+def init_repositories(db):
+    """Initialize all repositories with database connection"""
+    # TODO: Implement repository initialization
+    # This will be implemented when we add repository classes
+    pass
 
-    Usage:
-        db = Database(dsn="postgresql://user:pass@host:port/db")
-        await db.connect()
 
-        result = await db.fetchval("SELECT ...")
-        await db.execute("INSERT INTO ...")
+# Singleton repository instances
+_master_repo = None
+_bot_repo = None
+_subscription_repo = None
+_service_repo = None
+_appointment_repo = None
+_schedule_repo = None
+_session_repo = None
 
-        await db.close()
-    """
 
-    def __init__(self, dsn: str, min_size: int = 10, max_size: int = 20):
-        """
-        Initialize database connection pool
+def get_master_repo():
+    """Get or create master repository singleton"""
+    global _master_repo
+    if _master_repo is None:
+        from src.utils.db import MasterRepository, Database
+        from src.utils.config import get_settings
+        db = Database(get_settings().DATABASE_URL)
+        _master_repo = MasterRepository(db)
+    return _master_repo
 
-        Args:
-            dsn: PostgreSQL connection string
-            min_size: Minimum pool size
-            max_size: Maximum pool size
-        """
-        self.dsn = dsn
-        self.min_size = min_size
-        self.max_size = max_size
-        self.pool: Optional[asyncpg.Pool] = None
 
-    async def connect(self) -> None:
-        """Create connection pool"""
-        if self.pool is None:
-            try:
-                self.pool = await asyncpg.create_pool(
-                    self.dsn,
-                    min_size=self.min_size,
-                    max_size=self.max_size,
-                    command_timeout=60,
-                )
-                logger.info("Database connection pool created")
-            except Exception as e:
-                logger.error(f"Failed to create database pool: {e}")
-                raise
+def get_bot_repo():
+    """Get or create bot repository singleton"""
+    global _bot_repo
+    if _bot_repo is None:
+        from src.utils.db import BotRepository, Database
+        from src.utils.config import get_settings
+        db = Database(get_settings().DATABASE_URL)
+        _bot_repo = BotRepository(db)
+    return _bot_repo
 
-    async def close(self) -> None:
-        """Close connection pool"""
-        if self.pool:
-            await self.pool.close()
-            self.pool = None
-            logger.info("Database connection pool closed")
 
-    @asynccontextmanager
-    async def acquire(self):
-        """
-        Acquire connection from pool
+def get_subscription_repo():
+    """Get or create subscription repository singleton"""
+    global _subscription_repo
+    if _subscription_repo is None:
+        from src.utils.db import SubscriptionRepository, Database
+        from src.utils.config import get_settings
+        db = Database(get_settings().DATABASE_URL)
+        _subscription_repo = SubscriptionRepository(db)
+    return _subscription_repo
 
-        Usage:
-            async with db.acquire() as conn:
-                result = await conn.fetchval("SELECT ...")
-        """
-        if self.pool is None:
-            await self.connect()
 
-        async with self.pool.acquire() as connection:
-            yield connection
+def get_service_repo():
+    """Get or create service repository singleton"""
+    global _service_repo
+    if _service_repo is None:
+        from src.utils.db import ServiceRepository, Database
+        from src.utils.config import get_settings
+        db = Database(get_settings().DATABASE_URL)
+        _service_repo = ServiceRepository(db)
+    return _service_repo
 
-    async def execute(self, query: str, *args, timeout: float = None) -> str:
-        """
-        Execute a query that doesn't return data
 
-        Args:
-            query: SQL query
-            *args: Query parameters
-            timeout: Query timeout in seconds
+def get_appointment_repo():
+    """Get or create appointment repository singleton"""
+    global _appointment_repo
+    if _appointment_repo is None:
+        from src.utils.db import AppointmentRepository, Database
+        from src.utils.config import get_settings
+        db = Database(get_settings().DATABASE_URL)
+        _appointment_repo = AppointmentRepository(db)
+    return _appointment_repo
 
-        Returns:
-            Execution status string
+
+def get_schedule_repo():
+    """Get or create schedule repository singleton"""
+    global _schedule_repo
+    if _schedule_repo is None:
+        from src.utils.db import ScheduleRepository, Database
+        from src.utils.config import get_settings
+        db = Database(get_settings().DATABASE_URL)
+        _schedule_repo = ScheduleRepository(db)
+    return _schedule_repo
+
+
+def get_session_repo():
+    """Get or create session repository singleton"""
+    global _session_repo
+    if _session_repo is None:
+        from src.utils.db import SessionRepository, Database
+        from src.utils.config import get_settings
+        db = Database(get_settings().DATABASE_URL)
+        _session_repo = SessionRepository(db)
+    return _session_repo

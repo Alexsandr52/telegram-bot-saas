@@ -293,7 +293,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx-webhook.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - platform-bot

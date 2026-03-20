@@ -1,5 +1,10 @@
 # 🚀 Telegram Bot SaaS
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-24+-blue.svg)](https://www.docker.com/)
+[![Status: In Development](https://img.shields.io/badge/status-in%20development-orange.svg)]()
+
 Платформа для мастеров услуг, позволяющая создавать персональные Telegram-боты для записи клиентов.
 
 ## 📋 Обзор
@@ -233,6 +238,25 @@ REST API для веб-панели. Основные функции:
 2. Проверить статус: `docker ps`
 3. Проверить БД: `docker-compose exec database psql -U postgres -d bot_saas -c "SELECT 1"`
 
+## 🤝 Вклад в проект
+
+Вклады приветствуются! Если вы хотите внести свой вклад в проект, пожалуйста:
+
+1. Сделайте форк репозитория
+2. Создайте ветку для вашей фичи (`git checkout -b feature/AmazingFeature`)
+3. Закоммитьте изменения (`git commit -m 'Add some AmazingFeature'`)
+4. Запушьте ветку (`git push origin feature/AmazingFeature`)
+5. Откройте Pull Request
+
+## 🗺️ Roadmap
+
+- [ ] Полная интеграция платежных систем
+- [ ] Google Calendar синхронизация
+- [ ] Мобильное приложение для мастеров
+- [ ] Расширенная аналитика
+- [ ] Мультиязычность
+- [ ] WhatsApp интеграция
+
 ## 📄 Лицензия
 
 Этот проект распространяется под MIT License. Подробности см. в файле [LICENSE](LICENSE).
@@ -241,4 +265,4 @@ REST API для веб-панели. Основные функции:
 
 **Версия:** 1.0.0
 **Статус:** 🟡 В разработке
-**Последнее обновление:** 2026-03-20
+**Последнее обновление:** 2024-03-20

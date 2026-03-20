@@ -15,13 +15,34 @@ from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 
-# Add src to path
+# Add src and parent directory to path
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(project_root))
 
 from src.utils.config import get_settings
 from src.utils.db import Database
 from src.utils.repositories import init_repositories
-from shared.error_logging import init_error_logging, close_error_logging, log_exception, ErrorLevel, ErrorCategory
+# Import error logging if available
+try:
+    from shared.error_logging import init_error_logging, close_error_logging, log_exception, ErrorLevel, ErrorCategory
+except ImportError:
+    logger.warning("Shared error logging module not found, continuing without it")
+    # Define stubs for error logging functions
+    def init_error_logging(*args, **kwargs):
+        pass
+    def close_error_logging(*args, **kwargs):
+        pass
+    def log_exception(*args, **kwargs):
+        pass
+    class ErrorLevel:
+        DEBUG = "DEBUG"
+        INFO = "INFO"
+        ERROR = "ERROR"
+    class ErrorCategory:
+        DATABASE = "DATABASE"
+        API = "API"
+        BOT = "BOT"
 
 # Import routers
 from src.handlers import start, connect_bot, services, appointments, schedule, auth
@@ -53,7 +74,10 @@ async def init_db():
     init_repositories(db)
 
     # Initialize error logging system
-    await init_error_logging(settings.DATABASE_URL)
+    try:
+        await init_error_logging()
+    except Exception as e:
+        logger.warning(f"Failed to initialize error logging: {e}")
 
     logger.info("Database initialized")
 
@@ -90,7 +114,7 @@ async def main() -> None:
 
     # Add error handler for unhandled exceptions
     from aiogram import types
-    from aiogram.exceptions import TelegramBadRequest, TelegramForbidden, TelegramNotFound
+    from aiogram.exceptions import TelegramBadRequest
 
     @dp.errors()
     async def error_handler(event, exception):
@@ -115,7 +139,7 @@ async def main() -> None:
 
             # Determine error level
             error_level = ErrorLevel.ERROR
-            if isinstance(exception, (TelegramBadRequest, TelegramForbidden)):
+            if isinstance(exception, TelegramBadRequest):
                 # Expected user errors - WARNING level
                 error_level = ErrorLevel.WARNING
             elif "CRITICAL" in str(exception).upper() or "FATAL" in str(exception).upper():

@@ -15,6 +15,16 @@ from config import get_logger
 
 router = APIRouter(prefix="/logs", tags=["logging"])
 
+@router.get("/health")
+async def health_check():
+    """Health check endpoint for logging service"""
+    from datetime import datetime
+    return {
+        "status": "healthy",
+        "service": "logging-service",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
 
 @router.get("/", response_model=List[LogEntry])
 async def get_logs(

@@ -82,7 +82,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
 
       # Factory Service
-      FACTORY_SERVICE_URL: http://factory-service:8001
+      FACTORY_SERVICE_URL: http://factory-service:8002
 
       # Web Panel URL
       WEB_PANEL_URL: ${WEB_PANEL_URL}
@@ -140,7 +140,7 @@ services:
       - ./bot-templates:/bot-templates
       - ./logs/factory:/var/log/factory
     ports:
-      - "8001:8001"
+      - "8002:8002"
 
   # ============================================
   # Web API (Backend for web panel)
@@ -171,6 +171,8 @@ services:
         condition: service_healthy
     volumes:
       - ./logs/api:/var/log/api
+    ports:
+      - "8000:8000"
 
   # ============================================
   # Web Panel (Frontend for masters)
@@ -240,7 +242,7 @@ services:
 
       # API
       HOST: 0.0.0.0
-      PORT: 8001
+      PORT: 8003
 
       # CORS
       CORS_ORIGINS: ${CORS_ORIGINS}

@@ -166,21 +166,13 @@ async def show_statistics(callback: CallbackQuery) -> None:
                 if appt.get('status') == 'completed':
                     total_revenue += appt.get('price', 0)
 
-        # Get subscription info
-        from src.utils.db import SubscriptionRepository
-        sub_repo = SubscriptionRepository(bot_repo.db)
-        subscription = await sub_repo.get_active_subscription(master['id'])
-
-        sub_name = subscription.get('plan_name', 'Free') if subscription else 'Free'
-        sub_status = subscription.get('status', 'active') if subscription else 'active'
-
+        # SUBSCRIPTION DISABLED: No subscription display
         stats_text = (
             f"📊 *Ваша статистика*\n\n"
             f"🤖 Ботов: {len(bots)} (активных: {active_bots})\n"
             f"👥 Уникальных клиентов: {len(total_clients)}\n"
             f"📋 Всего записей: {total_appointments}\n"
-            f"💰 Заработано: {total_revenue:.0f} ₽\n\n"
-            f"💳 Тариф: {sub_name}\n"
+            f"💰 Заработано: {total_revenue:.0f} ₽"
         )
 
         await callback.message.edit_text(
@@ -214,23 +206,13 @@ async def show_settings(callback: CallbackQuery) -> None:
             await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
-        # Get subscription info
-        from src.utils.db import SubscriptionRepository
-        sub_repo = SubscriptionRepository(master_repo.db)
-        subscription = await sub_repo.get_active_subscription(master['id'])
-
-        sub_name = subscription.get('plan_name', 'Free') if subscription else 'Free'
-        sub_status = subscription.get('status', 'active') if subscription else 'active'
-
+        # SUBSCRIPTION DISABLED: No subscription display in settings
         settings_text = (
             f"⚙️ *Настройки*\n\n"
             f"👤 *Профиль*\n"
             f"Имя: {master.get('full_name') or 'Не указано'}\n"
             f"Username: @{master.get('username', 'Не указано')}\n"
             f"Телефон: {master.get('phone', 'Не указан')}\n\n"
-            f"💳 *Подписка*\n"
-            f"Тариф: {sub_name}\n"
-            f"Статус: {sub_status}\n\n"
             f"_Изменить профиль можно через меню управления._"
         )
 
@@ -324,68 +306,71 @@ async def web_panel_button(callback: CallbackQuery) -> None:
 
 
 # ============================================
-# Subscription Handler
+# Subscription Handler (DISABLED)
 # ============================================
 
-@router.callback_query(F.data == "subscription")
-async def subscription_button(callback: CallbackQuery) -> None:
-    """Subscription button handler"""
-    telegram_id = callback.from_user.id
-    master_repo = get_master_repo()
-    sub_repo = get_subscription_repo()
-
-    try:
-        master = await master_repo.get_master_by_telegram_id(telegram_id)
-        if not master:
-            await callback.answer("❌ Пользователь не найден", show_alert=True)
-            return
-
-        # Get subscription info
-        subscription = await sub_repo.get_active_subscription(master['id'])
-
-        if subscription:
-            plan_name = subscription.get('plan_name', 'Free')
-            expires_at = subscription.get('expires_at')
-            bots_limit = subscription.get('bots_limit', 1)
-
-            if expires_at:
-                expiry_str = expires_at.strftime('%d.%m.%Y')
-                expiry_text = f"до {expiry_str}"
-            else:
-                expiry_text = "бессрочно"
-
-            text = (
-                f"💳 *Ваша подписка*\n\n"
-                f"📦 Тариф: {plan_name}\n"
-                f"🤖 Лимит ботов: {bots_limit}\n"
-                f"📅 Действует: {expiry_text}\n\n"
-                f"Хотите изменить тариф?"
-            )
-        else:
-            text = (
-                "💳 *Ваша подписка*\n\n"
-                "🆓 Текущий тариф: Free\n"
-                "🤖 Лимит ботов: 1\n\n"
-                "Улучшите тариф для доступа к дополнительным функциям:"
-            )
-
-        await callback.message.edit_text(
-            text,
-            parse_mode="Markdown",
-            reply_markup=get_subscription_keyboard(
-                current_plan=subscription.get('plan_name', 'free').lower() if subscription else 'free'
-            )
-        )
-
-        # Log analytics event
-        await log_platform_event(
-            PlatformEventType.SUBSCRIPTION_VIEWED,
-            master_id=master['id'],
-            user_id=telegram_id
-        )
-
-        await callback.answer()
-
-    except Exception as e:
-        logger.error(f"Error in subscription handler: {e}")
-        await callback.answer("❌ Ошибка при загрузке подписки", show_alert=True)
+# SUBSCRIPTION DISABLED: This handler is disabled
+# Uncomment and implement when subscription system is ready
+#
+# @router.callback_query(F.data == "subscription")
+# async def subscription_button(callback: CallbackQuery) -> None:
+#     """Subscription button handler"""
+#     telegram_id = callback.from_user.id
+#     master_repo = get_master_repo()
+#     sub_repo = get_subscription_repo()
+#
+#     try:
+#         master = await master_repo.get_master_by_telegram_id(telegram_id)
+#         if not master:
+#             await callback.answer("❌ Пользователь не найден", show_alert=True)
+#             return
+#
+#         # Get subscription info
+#         subscription = await sub_repo.get_active_subscription(master['id'])
+#
+#         if subscription:
+#             plan_name = subscription.get('plan_name', 'Free')
+#             expires_at = subscription.get('expires_at')
+#             bots_limit = subscription.get('bots_limit', 1)
+#
+#             if expires_at:
+#                 expiry_str = expires_at.strftime('%d.%m.%Y')
+#                 expiry_text = f"до {expiry_str}"
+#             else:
+#                 expiry_text = "бессрочно"
+#
+#             text = (
+#                 f"💳 *Ваша подписка*\n\n"
+#                 f"📦 Тариф: {plan_name}\n"
+#                 f"🤖 Лимит ботов: {bots_limit}\n"
+#                 f"📅 Действует: {expiry_text}\n\n"
+#                 f"Хотите изменить тариф?"
+#             )
+#         else:
+#             text = (
+#                 "💳 *Ваша подписка*\n\n"
+#                 "🆓 Текущий тариф: Free\n"
+#                 "🤖 Лимит ботов: 1\n\n"
+#                 "Улучшите тариф для доступа к дополнительным функциям:"
+#             )
+#
+#         await callback.message.edit_text(
+#             text,
+#             parse_mode="Markdown",
+#             reply_markup=get_subscription_keyboard(
+#                 current_plan=subscription.get('plan_name', 'free').lower() if subscription else 'free'
+#             )
+#         )
+#
+#         # Log analytics event
+#         await log_platform_event(
+#             PlatformEventType.SUBSCRIPTION_VIEWED,
+#             master_id=master['id'],
+#             user_id=telegram_id
+#         )
+#
+#         await callback.answer()
+#
+#     except Exception as e:
+#         logger.error(f"Error in subscription handler: {e}")
+#         await callback.answer("❌ Ошибка при загрузке подписки", show_alert=True)

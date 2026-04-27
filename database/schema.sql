@@ -208,7 +208,7 @@ CREATE TABLE analytics_events (
     created_at TIMESTAMPTZ DEFAULT NOW()
 ) PARTITION BY RANGE (created_at);
 
--- Create partitions for analytics_events (current + next month)
+-- Create partitions for analytics_events (current year)
 CREATE TABLE analytics_events_2025_01 PARTITION OF analytics_events
     FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
 
@@ -217,6 +217,43 @@ CREATE TABLE analytics_events_2025_02 PARTITION OF analytics_events
 
 CREATE TABLE analytics_events_2025_03 PARTITION OF analytics_events
     FOR VALUES FROM ('2025-03-01') TO ('2025-04-01');
+
+-- 2026 partitions (current year)
+CREATE TABLE analytics_events_2026_01 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+
+CREATE TABLE analytics_events_2026_02 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
+
+CREATE TABLE analytics_events_2026_03 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+
+CREATE TABLE analytics_events_2026_04 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-04-01') TO ('2026-05-01');
+
+CREATE TABLE analytics_events_2026_05 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+
+CREATE TABLE analytics_events_2026_06 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+
+CREATE TABLE analytics_events_2026_07 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+
+CREATE TABLE analytics_events_2026_08 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
+
+CREATE TABLE analytics_events_2026_09 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');
+
+CREATE TABLE analytics_events_2026_10 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
+
+CREATE TABLE analytics_events_2026_11 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-11-01') TO ('2026-12-01');
+
+CREATE TABLE analytics_events_2026_12 PARTITION OF analytics_events
+    FOR VALUES FROM ('2026-12-01') TO ('2027-01-01');
 
 -- System logs
 CREATE TABLE system_logs (
@@ -285,7 +322,8 @@ CREATE INDEX idx_schedule_exceptions_date ON schedule_exceptions(date);
 CREATE INDEX idx_clients_bot_id ON clients(bot_id);
 CREATE INDEX idx_clients_telegram_id ON clients(telegram_id);
 CREATE INDEX idx_clients_phone ON clients(phone);
-CREATE INDEX idx_clients_is_blocked ON clients(is_active) WHERE is_blocked = true;
+CREATE INDEX idx_clients_is_blocked ON clients(is_blocked) WHERE is_blocked = true;
+CREATE INDEX idx_clients_is_active ON clients(is_active);
 
 -- Appointments indexes (CRITICAL for calendar)
 CREATE INDEX idx_appointments_bot_id ON appointments(bot_id);

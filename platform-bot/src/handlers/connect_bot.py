@@ -162,17 +162,12 @@ async def process_bot_token(
         await state.clear()
         return
 
-    # Check subscription limits
-    can_create = await subscription_repo.can_create_bot(master['id'])
-    if not can_create:
-        await message.answer(
-            "❌ Достигнут лимит ботов\n\n"
-            "Ваш тариф позволяет создать только 1 бота.\n"
-            "Для большего количества ботов оформите подписку Pro или Business.",
-            reply_markup=get_main_menu_keyboard()
-        )
-        await state.clear()
-        return
+    # SUBSCRIPTION DISABLED: No bot limits
+    # Subscription limits are disabled, unlimited bots allowed
+    # Original check (disabled):
+    # can_create = await subscription_repo.can_create_bot(master['id'])
+    # if not can_create:
+    #     await message.answer("❌ Достигнут лимит ботов...")
 
     try:
         # Verify token with Telegram API

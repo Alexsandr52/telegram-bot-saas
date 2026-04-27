@@ -37,12 +37,6 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                text="💳 Подписка",
-                callback_data="subscription"
-            )
-        ],
-        [
-            InlineKeyboardButton(
                 text="📊 Статистика",
                 callback_data="statistics"
             )

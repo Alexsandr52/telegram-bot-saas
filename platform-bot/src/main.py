@@ -93,13 +93,20 @@ async def main() -> None:
     await init_db()
 
     # Create bot
-    bot = Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(
+    bot_config = {
+        "token": settings.BOT_TOKEN,
+        "default": DefaultBotProperties(
             parse_mode=ParseMode.MARKDOWN,
             link_preview_is_disabled=False
         )
-    )
+    }
+
+    # Add proxy if configured (critical for Telegram API access in Russia)
+    if settings.TELEGRAM_PROXY:
+        logger.info(f"Using proxy: {settings.TELEGRAM_PROXY[:20]}...")
+        bot_config["proxy"] = settings.TELEGRAM_PROXY
+
+    bot = Bot(**bot_config)
 
     # Create dispatcher
     dp = Dispatcher(storage=MemoryStorage())

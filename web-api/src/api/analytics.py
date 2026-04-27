@@ -518,7 +518,6 @@ async def log_analytics_event(
             )
             if not bot:
                 raise HTTPException(status_code=404, detail="Bot not found")
-
         await db.execute(
             """
             INSERT INTO analytics_events (bot_id, event_type, user_id, event_data)

@@ -6,6 +6,13 @@
 .env.*.local
 .env.prod
 .env.production
+**/.env
+**/.env.local
+**/.env.prod
+**/.env.production
+*.prod.secrets
+.env.prod.secrets
+.secrets/
 
 # ============================================
 # Secrets & Certificates
@@ -15,7 +22,6 @@
 *.crt
 certbot/
 nginx/ssl/
-secrets/
 
 # ============================================
 # Virtual Environments
@@ -36,32 +42,64 @@ __pycache__/
 .idea/
 *.swp
 *.swo
-*~
-
-# ============================================
-# Docker
-# ============================================
-*.log
 
 # ============================================
 # OS
 # ============================================
 .DS_Store
 Thumbs.db
+*~
 claude_code_zai_env.sh
+
+# ============================================
+# Docker & Logs
+# ============================================
+*.log
+logs/
+**/logs/
 
 # ============================================
 # Backups & Data
 # ============================================
-claude_code_zai_env.sh
 backups/
+**/backups/
 *.backup
 *.sql
 *.dump
-logs/
+**/*.sql
+**/*.sql.gz
 
 # ============================================
 # Project documentation (local)
 # ============================================
 PROJECT_DOCUMENTATION.md
 MVP_CHECKLIST.md
+
+# ============================================
+# Local Deployment Guides (optional)
+# ============================================
+DEPLOYMENT_CHECKLIST.md
+DEPLOYMENT_PLAN.md
+MONITORING_SETUP.md
+PRODUCTION_TROUBLESHOOTING.md
+
+# ============================================
+# Local Monitoring & Data
+# ============================================
+monitoring/
+bot-templates/
+
+# ============================================
+# Test & Temp Files
+# ============================================
+*.test
+*.tmp
+*.temp
+
+# ============================================
+# Local Scripts (optional)
+# ============================================
+scripts/*.pyc
+scripts/__pycache__/
+scripts/test-*.py
+scripts/deploy-*.py

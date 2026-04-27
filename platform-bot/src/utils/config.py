@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     BOT_WEBHOOK_URL: Optional[str] = Field(None, description="Full webhook URL")
 
     # ============================================
+    # Proxy Configuration (Critical for Russia)
+    # ============================================
+    TELEGRAM_PROXY: Optional[str] = Field(
+        None,
+        description="SOCKS5 proxy URL for Telegram API (e.g., socks5://user:pass@host:port)"
+    )
+    TELEGRAM_PROXY_USER: Optional[str] = Field(None, description="Proxy username if needed")
+    TELEGRAM_PROXY_PASSWORD: Optional[str] = Field(None, description="Proxy password if needed")
+
+    # ============================================
     # Database
     # ============================================
     DATABASE_URL: str = Field(

@@ -41,6 +41,7 @@ WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", f"/webhook/{BOT_ID}")
 WEBHOOK_SECRET_TOKEN = os.getenv("WEBHOOK_SECRET_TOKEN", None)
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
 WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8080"))
+TELEGRAM_PROXY = os.getenv("TELEGRAM_PROXY")  # Proxy for Telegram API
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable is required")
@@ -84,13 +85,20 @@ async def setup_bot() -> tuple[Bot, Dispatcher]:
     await init_error_logging(DATABASE_URL)
 
     # Create bot
-    bot = Bot(
-        token=BOT_TOKEN,
-        default=DefaultBotProperties(
+    bot_config = {
+        "token": BOT_TOKEN,
+        "default": DefaultBotProperties(
             parse_mode=ParseMode.MARKDOWN,
             link_preview_is_disabled=False
         )
-    )
+    }
+
+    # Add proxy if configured (critical for Telegram API access in Russia)
+    if TELEGRAM_PROXY:
+        logger.info(f"Using proxy: {TELEGRAM_PROXY[:20]}...")
+        bot_config["proxy"] = TELEGRAM_PROXY
+
+    bot = Bot(**bot_config)
 
     # Create dispatcher
     dp = Dispatcher(storage=MemoryStorage())

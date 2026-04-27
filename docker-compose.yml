@@ -124,6 +124,11 @@ services:
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
+
+      # Proxy (optional, for VPN)
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-database,redis,factory-service,web-api,web-panel,notification-service}
     networks:
       - bot_saas_network
     depends_on:

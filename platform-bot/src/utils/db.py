@@ -695,22 +695,21 @@ class SubscriptionRepository:
 
     async def can_create_bot(self, master_id: uuid.UUID) -> bool:
         """Check if master can create more bots based on subscription"""
-        subscription = await self.get_active_subscription(master_id)
+        # SUBSCRIPTION DISABLED: Always return True for unlimited bots
+        # Future: Re-enable when subscription system is implemented
+        return True
 
-        if not subscription:
-            # Free tier: 1 bot
-            subscription = {'bots_limit': 1}
-        elif subscription['bots_limit'] is None:
-            # Unlimited bots
-            return True
-
-        # Count active bots
-        bot_count = await self.db.fetchval(
-            "SELECT COUNT(*) FROM bots WHERE master_id = $1 AND is_active = true",
-            master_id
-        )
-
-        return bot_count < subscription['bots_limit']
+        # Original subscription logic (disabled):
+        # subscription = await self.get_active_subscription(master_id)
+        # if not subscription:
+        #     subscription = {'bots_limit': 1}
+        # elif subscription['bots_limit'] is None:
+        #     return True
+        # bot_count = await self.db.fetchval(
+        #     "SELECT COUNT(*) FROM bots WHERE master_id = $1 AND is_active = true",
+        #     master_id
+        # )
+        # return bot_count < subscription['bots_limit']
 
 
 # ============================================

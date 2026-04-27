@@ -106,12 +106,27 @@ app.include_router(analytics.router, prefix=settings.API_PREFIX)
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
+    """Health check endpoint with database connectivity check"""
+    health_status = {
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION
     }
+
+    # Check database connectivity
+    try:
+        db = get_db()
+        if db and db.pool:
+            await db.pool.fetchval("SELECT 1")
+            health_status["database"] = "connected"
+        else:
+            health_status["database"] = "disconnected"
+            health_status["status"] = "degraded"
+    except Exception as e:
+        health_status["database"] = f"error: {str(e)}"
+        health_status["status"] = "unhealthy"
+
+    return health_status
 
 
 @app.get("/")
